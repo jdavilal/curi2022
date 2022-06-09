@@ -18,7 +18,6 @@ library(ggpubr)
 library(ggrepel)
 ```
 
-
 ## Preliminary functions
 
 The following functions allow us to load and analyze mutational signatures
@@ -148,7 +147,6 @@ get_top_signature <-function(mut.table, signatures.table,
 
     return (plot.top)
 }
-
 ```
 
 ## Data acquisition and cleaning
@@ -165,14 +163,12 @@ signatures <- read_csv(
 sample.info <-
     read_csv("mutational_sig_oec-main/supplied_data/sample.info.csv") %>%
     filter (area.cov > 5e6)
-
-
 ```
 
 ## Linear regression model
 ```{r}
 #Load the P3, Sig10,6,5 data
-data <- read_csv("mutational_sig_oec-main/supplied_data/P3_sig.csv")
+data <- read_csv("Data/P3_sig.csv")
 
 model1 <- lm(p3 ~ 0 + sig10 + sig6, data = data)
 summary(model1)
@@ -266,6 +262,7 @@ mut_df <- df_a %>%
 sample_profile <- mut_df %>%
   select(prob)
 sample_profile <- as.matrix(sample_profile)
+sample_profile
 ```
 
 ## Function for generating the sample mutation profiles
@@ -352,5 +349,6 @@ generate_sample_prof <- function(A, B, n){
 #A, B = Signatures.A, Signatures.B
 #n = the number of mutations that we want to generate
 generate_sample_prof(10,6,500)
+generate_sample_prof(10,1,500)
 ```
 
