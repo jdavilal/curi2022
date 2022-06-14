@@ -166,6 +166,7 @@ sample.info <-
 ```
 
 ## Linear regression model
+This code generates the simple Linear regression model for profile p3 based on Signature 10 and Signature6 or Signature1.
 ```{r}
 #Load the P3, Sig10,6,5 data
 data <- read_csv("Data/P3_sig.csv")
@@ -191,10 +192,19 @@ data1 <- data %>%
 #plot2
 ggplot(data1, aes(x = prob, y = p3, color = signatures)) +
   geom_point() +
-  geom_smooth(method = "lm")
+  geom_smooth(method = "lm") +
+  labs(
+    y = "Mutation prob of P3",
+    x = "Mutation prob of Sig",
+    title = "Contribution of Signatures to the Profile P3"
+  ) +
+  theme(
+        axis.text.x = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.text.y = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.title = element_text(size = 17), plot.title = element_text(size=22), legend.text=element_text(size=17), legend.title =element_text(size=17)) 
 ```
 
 ## Function testing code
+This chuck is for testing the code before making the fuction.
+It is generating the sample mutational profile based on the selected signatures and the number of mutations of each signature.
 ```{r}
 #load the Signatures 10, 6, 1
 cosmic.signatures <- load_cosmic_matrix()
@@ -216,8 +226,13 @@ mut.join <-  mutational.signature %>%
 order.tri <-  unique(mut.join$ext.context)
 mut_order <- as_tibble(order.tri)
 
+
+#define the number of generating mutations of each signature
+n1 <- 5000
+n2 <- 5000
+
 #generate random mutation samples of Signature 10
-a <- sample(rownames(sig), size = 500, replace = TRUE, prob = as.vector(sig[,"10"]))
+a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"10"]))
 df_a <- as_tibble(a)
 df_a <- df_a %>%
   count(value) %>%
@@ -234,7 +249,7 @@ df_a <- df_a %>%
   )
 
 #generate random mutation samples of Signature 6
-b <- sample(rownames(sig), size = 500, replace = TRUE, prob = as.vector(sig[,"6"]))
+b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"6"]))
 df_b <- as_tibble(b)
 df_b <- df_b %>%
   count(value) %>%
@@ -254,15 +269,28 @@ df_b <- df_b %>%
 mut_df <- df_a %>%
   inner_join(df_b, by = "value") %>%
   mutate(
-    prob = (prob.x + prob.y)/2
+    sum_n = n.x + n.y,
+    prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
   ) %>%
   select(value, prob)
+
 
 #define the sample profile created by two sample mutations
 sample_profile <- mut_df %>%
   select(prob)
 sample_profile <- as.matrix(sample_profile)
 sample_profile
+
+
+#testing
+sig <-cosmic.signatures[,c(10,6)]
+sig.labels <- c("sigA", "sigB")
+colnames(sig) <- sig.labels
+
+data<- cbind(sample_profile,sig)
+data<-as_tibble(data)
+model<- lm(prob ~ 0 + sigA + sigB, data=data)
+summary(model)
 ```
 
 ## Function for generating the sample mutation profiles
@@ -278,24 +306,25 @@ order.tri <-  unique(mut.join$ext.context)
 mut_order <- as_tibble(order.tri)
 ```
 
-Function for generating the sample mutation profiles 
+
+This function is generating the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and n2` of each signature.
+
+n1 = the number of mutations that we want to generate from the Signature.A
+n2 = the number of mutations that we want to generate from the Signature.B
 ```{r}
 #A, B = Signatures.A, Signatures.B
-#n = the number of mutations that we want to generate
-generate_sample_prof <- function(A, B, n){
+#n1 = the number of mutations that we want to generate from the Signature.A
+#n2 = the number of mutations that we want to generate from the Signature.B
+
+generate_sample_prof <- function(A, B, n1, n2){
 
   cosmic.signatures <- load_cosmic_matrix()
   sig <- cosmic.signatures[,c(A, B)]
   sig.labels <-  c("A","B")
   colnames(sig) <- sig.labels
   
-  #load the mutation order
-  mut.selected <- sample.info %>%
-    select (sample) %>%
-    inner_join (signatures)
-  
   #generate random mutation samples of Signature 10
-  a <- sample(rownames(sig), size = n, replace = TRUE, prob = as.vector(sig[,"A"]))
+  a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
   df_a <- as_tibble(a)
   df_a <- df_a %>%
     count(value) %>%
@@ -312,7 +341,7 @@ generate_sample_prof <- function(A, B, n){
     )
   
   #generate random mutation samples of Signature 6
-  b <- sample(rownames(sig), size = n, replace = TRUE, prob = as.vector(sig[,"B"]))
+  b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
   df_b <- as_tibble(b)
   df_b <- df_b %>%
     count(value) %>%
@@ -332,7 +361,7 @@ generate_sample_prof <- function(A, B, n){
   mut_df <- df_a %>%
     inner_join(df_b, by = "value") %>%
     mutate(
-      prob = (prob.x + prob.y)/2
+      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
     ) %>%
     select(value, prob)
   
@@ -345,10 +374,30 @@ generate_sample_prof <- function(A, B, n){
 }
 ```
 
+
+Function for generating the simple Linear regression model for the generated sample mutational profile based on Signature.A and Signature.B.
+```{r}
+lm_test <- function(sample_profile, sigA, sigB){
+  sig <-cosmic.signatures[,c(sigA,sigB)]
+  sig.labels <- c("sigA", "sigB")
+  colnames(sig) <- sig.labels
+ 
+  data<- cbind(sample_profile,sig)
+  data<-as_tibble(data)
+  model<- lm(prob ~ 0 + sigA + sigB, data=data)
+  summary(model)
+}
+```
 ```{r}
 #A, B = Signatures.A, Signatures.B
-#n = the number of mutations that we want to generate
-generate_sample_prof(10,6,500)
-generate_sample_prof(10,1,500)
+#n1 = the number of mutations that we want to generate from the Signature.A
+#n2 = the number of mutations that we want to generate from the Signature.B
+
+#generate_sample_prof(A, B, n1, n2)
+sample_profile <- generate_sample_prof(10,6,2000,8000)
+lm_test(sample_profile,10,6)
+
+sample_profile <- generate_sample_prof(10,6,5000,5000)
+lm_test(sample_profile,10,6)
 ```
 
