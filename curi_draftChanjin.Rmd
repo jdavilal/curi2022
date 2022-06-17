@@ -16,6 +16,7 @@ library(grid)
 library(gridExtra)
 library(ggpubr)
 library(ggrepel)
+library(broom)
 ```
 
 ## Preliminary functions
@@ -203,7 +204,7 @@ ggplot(data1, aes(x = prob, y = p3, color = signatures)) +
 ```
 
 ## Function testing code
-This chuck is for testing the code before making the fuction.
+This chuck is for testing the code before making the function.
 It is generating the sample mutational profile based on the selected signatures and the number of mutations of each signature.
 ```{r}
 #load the Signatures 10, 6, 1
@@ -243,10 +244,6 @@ df_a <- df_a %>%
   merge(mut_order, all = TRUE)
 
 df_a[is.na(df_a)] <- 0     # Replace NA with 0
-df_a <- df_a %>%
-  mutate(
-    prob = prob + 1e-04
-  )
 
 #generate random mutation samples of Signature 6
 b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"6"]))
@@ -260,10 +257,6 @@ df_b <- df_b %>%
   merge(mut_order, all = TRUE)
 
 df_b[is.na(df_b)] <- 0     # Replace NA with 0
-df_b <- df_b %>%
-  mutate(
-    prob = prob + 1e-04
-  )
 
 #join those two sample mutations
 mut_df <- df_a %>%
@@ -278,11 +271,12 @@ mut_df <- df_a %>%
 #define the sample profile created by two sample mutations
 sample_profile <- mut_df %>%
   select(prob)
+
 sample_profile <- as.matrix(sample_profile)
 sample_profile
 
 
-#testing
+#testing the lm model
 sig <-cosmic.signatures[,c(10,6)]
 sig.labels <- c("sigA", "sigB")
 colnames(sig) <- sig.labels
@@ -291,6 +285,17 @@ data<- cbind(sample_profile,sig)
 data<-as_tibble(data)
 model<- lm(prob ~ 0 + sigA + sigB, data=data)
 summary(model)
+
+tidy <- model %>% tidy()
+coefs <- tidy$estimate
+```
+
+```{r}
+#plot the sample mutational profile
+rownames(mut_df) <- mut_df$value
+mut_df <- mut_df %>%
+  select(prob)
+plot_96_profile(mut_df)
 ```
 
 ## Function for generating the sample mutation profiles
@@ -311,7 +316,7 @@ This function is generating the sample mutational profile based on the selected 
 
 n1 = the number of mutations that we want to generate from the Signature.A
 n2 = the number of mutations that we want to generate from the Signature.B
-```{r}
+```{r, message=FALSE, warning=FALSE}
 #A, B = Signatures.A, Signatures.B
 #n1 = the number of mutations that we want to generate from the Signature.A
 #n2 = the number of mutations that we want to generate from the Signature.B
@@ -335,10 +340,6 @@ generate_sample_prof <- function(A, B, n1, n2){
     merge(mut_order, all = TRUE)
   
   df_a[is.na(df_a)] <- 0     # Replace NA with 0
-  df_a <- df_a %>%
-    mutate(
-      prob = prob + 1e-04
-    )
   
   #generate random mutation samples of Signature 6
   b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
@@ -352,10 +353,6 @@ generate_sample_prof <- function(A, B, n1, n2){
     merge(mut_order, all = TRUE)
   
   df_b[is.na(df_b)] <- 0     # Replace NA with 0
-  df_b <- df_b %>%
-    mutate(
-      prob = prob + 1e-04
-    )
   
   #join those two sample mutations
   mut_df <- df_a %>%
@@ -374,6 +371,61 @@ generate_sample_prof <- function(A, B, n1, n2){
 }
 ```
 
+This function is plotting the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and n2` of each signature.
+```{r}
+#A, B = Signatures.A, Signatures.B
+#n1 = the number of mutations that we want to generate from the Signature.A
+#n2 = the number of mutations that we want to generate from the Signature.B
+
+plot_sample_prof <- function(A, B, n1, n2){
+
+  cosmic.signatures <- load_cosmic_matrix()
+  sig <- cosmic.signatures[,c(A, B)]
+  sig.labels <-  c("A","B")
+  colnames(sig) <- sig.labels
+  
+  #generate random mutation samples of Signature 10
+  a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
+  df_a <- as_tibble(a)
+  df_a <- df_a %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n),
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_a[is.na(df_a)] <- 0     # Replace NA with 0
+  
+  #generate random mutation samples of Signature 6
+  b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
+  df_b <- as_tibble(b)
+  df_b <- df_b %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n)
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_b[is.na(df_b)] <- 0     # Replace NA with 0
+  
+  #join those two sample mutations
+  mut_df <- df_a %>%
+    inner_join(df_b, by = "value") %>%
+    mutate(
+      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
+    ) %>%
+    select(value, prob)
+  
+  #plot the sample mutational profile
+  rownames(mut_df) <- mut_df$value
+  mut_df <- mut_df %>%
+    select(prob)
+  
+  plot_96_profile(mut_df)
+}
+```
 
 Function for generating the simple Linear regression model for the generated sample mutational profile based on Signature.A and Signature.B.
 ```{r}
@@ -385,19 +437,367 @@ lm_test <- function(sample_profile, sigA, sigB){
   data<- cbind(sample_profile,sig)
   data<-as_tibble(data)
   model<- lm(prob ~ 0 + sigA + sigB, data=data)
-  summary(model)
+  
+  tidy <- model %>% tidy()
+  tidy$estimate
 }
 ```
+
+Function testing
 ```{r}
 #A, B = Signatures.A, Signatures.B
 #n1 = the number of mutations that we want to generate from the Signature.A
 #n2 = the number of mutations that we want to generate from the Signature.B
 
 #generate_sample_prof(A, B, n1, n2)
+plot_sample_prof(10,6,2000,8000)
+#generate_sample_prof(A, B, n1, n2)
 sample_profile <- generate_sample_prof(10,6,2000,8000)
+#lm_test(sample_profile, A, B)
 lm_test(sample_profile,10,6)
 
-sample_profile <- generate_sample_prof(10,6,5000,5000)
+sample_profile <- generate_sample_prof(10,6,200,800)
 lm_test(sample_profile,10,6)
+
+sample_profile <- generate_sample_prof(1,6,10,100)
+lm_test(sample_profile,1,6)
+
+sample_profile <- generate_sample_prof(6,10,100,900)
+lm_test(sample_profile,6,10)
+```
+
+
+Plot function for the Coefficients change 
+```{r, message=FALSE, warning=FALSE}
+coeff_change <- function(n, A, B){
+  sum_n <- c(n)
+  percent <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)
+  
+  predicted_A <- c()
+  predicted_B <- c()
+  amount <- c()
+  
+  for (i in sum_n){
+    for (j in percent){
+      sample_profile <- generate_sample_prof(A,B,i*j,i*(1-j))
+      coeff <- lm_test(sample_profile,A,B)
+      
+      predicted_A <- append(predicted_A, coeff[1])
+      predicted_B <- append(predicted_B, coeff[2])
+      
+      amount <- append(amount, j)
+    }
+  }
+  
+  df <- as.tibble(cbind(amount, predicted_A, predicted_B))
+  df
+}
+```
+
+Function testing
+```{r}
+df_1000 <- coeff_change(1000, 10, 6)
+df_100 <- coeff_change(100, 10, 6)
+amount <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+
+df_1000 %>%
+  pivot_longer(
+    cols = c(`predicted_A`, `predicted_B`),
+    names_to = "signature", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = signature)) +
+    geom_point() +
+    scale_x_continuous(labels = amount, breaks = amount)
+
+df_100 %>%
+  pivot_longer(
+    cols = c(`predicted_A`, `predicted_B`),
+    names_to = "signature", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = signature)) +
+    geom_point() +
+    scale_x_continuous(labels = amount, breaks = amount)
+```
+
+
+Signature 10 plot
+Check when Signature 10 is 10%, 20%, ... 100% of the mutations
+```{r}
+#join the dataframe when `n`(the number of data) is from 1000 to 100
+#check when Signature 10 is 10%, 20%, ... 100% of the mutations
+
+df_10 <- coeff_change(1000, 10, 6)
+n <- c(900,800,700,600,500,400,300,200,100)
+
+for (i in n){
+  df_n <- coeff_change(i, 10, 6)
+  df_10 <- df_10 %>% 
+    full_join(df_n, by = "amount") 
+}
+
+df.labels <-  c("amount", "1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+colnames(df_10) <- df.labels
+```
+
+```{r}
+#Plot for both signatures
+df_10 %>%
+  pivot_longer(
+    cols = c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B"),
+    names_to = "n", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  mutate(
+    type = ifelse(str_detect(n, "A"), "Sig A", "Sig B")
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = type)) +
+    geom_point() +
+    scale_x_continuous("amount", labels = as.character(amount), breaks = amount) 
+
+
+df.levels <-  c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+
+df_A <- df_10 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(`1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`),
+    names_to = "n.A", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+df_B <- df_10 %>%
+  select(amount, `1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`) %>%
+  pivot_longer(
+    cols = c(`1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`),
+    names_to = "n.B", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+#Individual plot
+#Signature A plot
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = n.A)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+#Signature B plot
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+```
+
+
+Signature 6 plot
+Check when Signature 6 is 10%, 20%, ... 100% of the mutations
+```{r}
+#join the dataframe when `n`(the number of data) is from 1000 to 100
+#check when Signature 10 is 10%, 20%, ... 100% of the mutations
+
+df_6 <- coeff_change(1000, 6, 10)
+n <- c(900,800,700,600,500,400,300,200,100)
+
+for (i in n){
+  df_n <- coeff_change(i, 6, 10)
+  df_6 <- df_6 %>% 
+    full_join(df_n, by = "amount") 
+}
+
+df.labels <-  c("amount", "1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+colnames(df_6) <- df.labels
+```
+
+```{r}
+#Plot for both signatures
+df_6 %>%
+  pivot_longer(
+    cols = c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B"),
+    names_to = "n", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  mutate(
+    type = ifelse(str_detect(n, "A"), "Sig A", "Sig B")
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = type)) +
+    geom_point() +
+    scale_x_continuous("amount", labels = as.character(amount), breaks = amount) 
+
+
+df.levels <-  c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+
+df_A <- df_6 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(`1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`),
+    names_to = "n.A", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+df_B <- df_6 %>%
+  select(amount, `1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`) %>%
+  pivot_longer(
+    cols = c(`1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`),
+    names_to = "n.B", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+#Individual plot
+#Signature A plot
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = n.A)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+#Signature B plot
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+```
+
+Compare two Signature 10, 6 on the sample plot
+```{r}
+df_s10 <- df_10 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(-amount),
+    names_to = "n", 
+    values_to = "Sig10.prob", 
+    values_drop_na = TRUE
+  ) 
+
+df_s6 <- df_6 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(-amount),
+    names_to = "n", 
+    values_to = "Sig6.prob", 
+    values_drop_na = TRUE
+  )
+
+s_10_6 <- df_s10 %>%
+  full_join(df_s6, by = c("amount", "n")) %>%
+  pivot_longer(
+    cols = c(`Sig10.prob`, `Sig6.prob`),
+    names_to = "Signature", 
+    values_to = "prob", 
+    values_drop_na = TRUE
+  )
+
+s_10_6 %>%
+  ggplot(aes(x = amount, y = prob, color = Signature)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n)
 ```
 
