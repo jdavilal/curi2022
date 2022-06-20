@@ -1,0 +1,803 @@
+---
+title: "Curi Draft"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+
+library(tidyverse)
+library(MutationalPatterns)
+library(NMF)
+library(reshape2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(ggrepel)
+library(broom)
+```
+
+## Preliminary functions
+
+The following functions allow us to load and analyze mutational signatures
+
+```{r}
+# Loads a mutational signature matrix from a mutational signature txt file
+load_old_mutational_matrix<- 
+  function(filename,
+          mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+  mutational.signature <-  read_csv(filename)
+  mut_mat <-  read_csv(mut.order)
+
+  mut.join <-  mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri <-  unique(mut.join$ext.context)
+
+  mut.join <-  mut.join %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    select(ext.context,prob)
+  
+  mut.matrix <-  as.matrix(
+        sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+
+  rownames(mut.matrix) <-  mut.join$ext.context
+ 
+  return (t(mut.matrix)[,1:96])
+}
+
+change_old_mutational_matrix<-
+    function(sig.frame,
+             mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+        
+  mutational.signature <-  sig.frame
+  mut_mat <-  read_csv(mut.order)
+
+  mut.join <-  mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri <-  unique(mut.join$ext.context)
+
+  mut.join <-  mut.join %>%
+      mutate(ext.context =
+                 factor (ext.context, levels = order.tri)) %>%
+      select(sample,ext.context,prob) %>%
+      pivot_wider(names_from = ext.context,
+                  values_from = prob)
+    
+    mut.matrix <-  as.matrix(
+        sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+    rownames(mut.matrix) = mut.join$sample
+
+    return (t(mut.matrix))
+}
+
+load_cosmic_matrix<- function(mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+
+  sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
+                "signatures_probabilities.txt", sep = "")
+   
+  cancer_signatures <-  read.table(sp_url, sep = "\t", header = TRUE)
+  # Match the order of the mutation types to MutationalPatterns standard
+  mut_mat <-  read_csv(mut.order)
+  new_order <-  match(mut_mat$ext.context, cancer_signatures$Somatic.Mutation.Type) 
+  # Reorder cancer signatures dataframe
+  cancer_signatures <-  cancer_signatures[as.vector(new_order),]
+  # Add trinucletiode changes names as row.names
+  row.names(cancer_signatures) <-  cancer_signatures$Somatic.Mutation.Type
+  # Keep only 96 contributions of the signatures in matrix
+  cancer_signatures <- as.matrix(cancer_signatures[,4:33])
+  return(cancer_signatures)
+}
+
+# Returns a frame with columns Signature, Sample, Contribution with the absolute
+# contribution of each signature for each sample
+calc_abs_contribution <- function(nmf.res,sig.names) {
+
+  total_signatures <-  colSums(nmf.res$signatures) 
+  abs_contribution <-  nmf.res$contribution * total_signatures
+  rownames(abs_contribution) <- sig.names
+
+  m_contribution <-  melt(abs_contribution)
+  colnames(m_contribution) = c("signature", "sample", "contribution")
+
+  return (m_contribution)
+}
+
+# Returns a frames with the cosine similarity (fit) between the original profile and the
+# reconstructed profile
+calc_fit_contribution <- function(mut.matrix,nmf.res) {
+
+  # calculate all pairwise cosine similarities
+  cos_sim_ori_rec <- cos_sim_matrix(mut.matrix, nmf.res$reconstructed)
+  # extract cosine similarities per sample between original and reconstructed
+  fit.table<- as.data.frame(diag(cos_sim_ori_rec))
+  fit.table$Sample <-  rownames(fit.table)
+  colnames(fit.table) = c("fit","sample")
+
+  return(fit.table)
+}
+
+get_top_signature <-function(mut.table, signatures.table,
+                             signature,top.n=8,
+                             signatures=
+                                 c("PolE","Aging","MMR","Germline")){
+
+    # Construct table with only contribution from specific signature
+    sig.table <-  mut.table %>%
+        gather(signatures,key="sign.name",value="contribution") %>%
+        filter(sign.name==signature) %>%
+        arrange(desc(contribution))
+
+    # Pick top n samples for that signature
+    top.table <- 
+        sig.table %>% arrange(desc(contribution)) %>%
+        head(top.n)
+
+    # Pick signatures for those top samples and plot them
+    mut.selected <- top.table %>%
+        select(sample) %>%
+        inner_join (signatures.table)
+
+    top.signatures <-  change_old_mutational_matrix(mut.selected)
+    colnames(top.signatures) <-  paste0("P",1:top.n,"")
+
+    plot.top <-  plot_96_profile(top.signatures)
+
+    return (plot.top)
+}
+```
+
+## Data acquisition and cleaning
+
+We load the mutational signatures file for all of the samples and consider only 
+samples that have high sequencing coverage (over 5Mb at 20x)
+```{r}
+# Load mutational signature data for all samples
+signatures <- read_csv(
+    "mutational_sig_oec-main/supplied_data/mutational.sig.csv")
+
+# Load sequencing/cohort info for samples, filter with at
+# at least 5 million Mb covered
+sample.info <-
+    read_csv("mutational_sig_oec-main/supplied_data/sample.info.csv") %>%
+    filter (area.cov > 5e6)
+```
+
+## Linear regression model
+This code generates the simple Linear regression model for profile p3 based on Signature 10 and Signature6 or Signature1.
+```{r}
+#Load the P3, Sig10,6,5 data
+data <- read_csv("Data/P3_sig.csv")
+
+model1 <- lm(p3 ~ 0 + sig10 + sig6, data = data)
+summary(model1)
+
+model2 <- lm(p3 ~ 0 + sig10 + sig1, data = data)
+summary(model2)
+
+#plot1
+ggplot(data, aes(sig10, p3)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+data1 <- data %>%
+  pivot_longer(
+    cols = c(`sig10`, `sig6`, `sig1`),
+    names_to = "signatures", 
+    values_to = "prob"
+  )
+
+#plot2
+ggplot(data1, aes(x = prob, y = p3, color = signatures)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(
+    y = "Mutation prob of P3",
+    x = "Mutation prob of Sig",
+    title = "Contribution of Signatures to the Profile P3"
+  ) +
+  theme(
+        axis.text.x = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.text.y = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.title = element_text(size = 17), plot.title = element_text(size=22), legend.text=element_text(size=17), legend.title =element_text(size=17)) 
+```
+
+## Function testing code
+This chuck is for testing the code before making the function.
+It is generating the sample mutational profile based on the selected signatures and the number of mutations of each signature.
+```{r}
+#load the Signatures 10, 6, 1
+cosmic.signatures <- load_cosmic_matrix()
+sig <- cosmic.signatures[,c(10,6,1)]
+sig.labels <-  c("10","6","1")
+colnames(sig) <- sig.labels
+
+#load the mutation order
+mut.selected <- sample.info %>%
+  select (sample) %>%
+  inner_join (signatures)
+
+mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
+mutational.signature <-  mut.selected
+mut_mat <-  read_csv(mut.order)
+
+mut.join <-  mutational.signature %>%
+  inner_join(mut_mat)
+order.tri <-  unique(mut.join$ext.context)
+mut_order <- as_tibble(order.tri)
+
+
+#define the number of generating mutations of each signature
+n1 <- 5000
+n2 <- 5000
+
+#generate random mutation samples of Signature 10
+a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"10"]))
+df_a <- as_tibble(a)
+df_a <- df_a %>%
+  count(value) %>%
+  mutate(
+    value = factor(value, levels = order.tri),
+    prob = n/sum(n),
+  ) %>%
+  merge(mut_order, all = TRUE)
+
+df_a[is.na(df_a)] <- 0     # Replace NA with 0
+
+#generate random mutation samples of Signature 6
+b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"6"]))
+df_b <- as_tibble(b)
+df_b <- df_b %>%
+  count(value) %>%
+  mutate(
+    value = factor(value, levels = order.tri),
+    prob = n/sum(n)
+  ) %>%
+  merge(mut_order, all = TRUE)
+
+df_b[is.na(df_b)] <- 0     # Replace NA with 0
+
+#join those two sample mutations
+mut_df <- df_a %>%
+  inner_join(df_b, by = "value") %>%
+  mutate(
+    sum_n = n.x + n.y,
+    prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
+  ) %>%
+  select(value, prob)
+
+
+#define the sample profile created by two sample mutations
+sample_profile <- mut_df %>%
+  select(prob)
+
+sample_profile <- as.matrix(sample_profile)
+sample_profile
+
+
+#testing the lm model
+sig <-cosmic.signatures[,c(10,6)]
+sig.labels <- c("sigA", "sigB")
+colnames(sig) <- sig.labels
+
+data<- cbind(sample_profile,sig)
+data<-as_tibble(data)
+model<- lm(prob ~ 0 + sigA + sigB, data=data)
+summary(model)
+
+tidy <- model %>% tidy()
+coefs <- tidy$estimate
+```
+
+```{r}
+#plot the sample mutational profile
+rownames(mut_df) <- mut_df$value
+mut_df <- mut_df %>%
+  select(prob)
+plot_96_profile(mut_df)
+```
+
+## Function for generating the sample mutation profiles
+Load the Mutation signatures order
+```{r}
+mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
+mutational.signature <-  mut.selected
+mut_mat <-  read_csv(mut.order)
+
+mut.join <-  mutational.signature %>%
+  inner_join(mut_mat)
+order.tri <-  unique(mut.join$ext.context)
+mut_order <- as_tibble(order.tri)
+```
+
+
+This function is generating the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and n2` of each signature.
+
+n1 = the number of mutations that we want to generate from the Signature.A
+n2 = the number of mutations that we want to generate from the Signature.B
+```{r, message=FALSE, warning=FALSE}
+#A, B = Signatures.A, Signatures.B
+#n1 = the number of mutations that we want to generate from the Signature.A
+#n2 = the number of mutations that we want to generate from the Signature.B
+
+generate_sample_prof <- function(A, B, n1, n2){
+
+  cosmic.signatures <- load_cosmic_matrix()
+  sig <- cosmic.signatures[,c(A, B)]
+  sig.labels <-  c("A","B")
+  colnames(sig) <- sig.labels
+  
+  #generate random mutation samples of Signature 10
+  a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
+  df_a <- as_tibble(a)
+  df_a <- df_a %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n),
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_a[is.na(df_a)] <- 0     # Replace NA with 0
+  
+  #generate random mutation samples of Signature 6
+  b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
+  df_b <- as_tibble(b)
+  df_b <- df_b %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n)
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_b[is.na(df_b)] <- 0     # Replace NA with 0
+  
+  #join those two sample mutations
+  mut_df <- df_a %>%
+    inner_join(df_b, by = "value") %>%
+    mutate(
+      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
+    ) %>%
+    select(value, prob)
+  
+  #define the sample profile created by two sample mutations
+  sample_profile <- mut_df %>%
+    select(prob)
+  sample_profile <- as.matrix(sample_profile)
+  
+  sample_profile
+}
+```
+
+This function is plotting the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and n2` of each signature.
+```{r}
+#A, B = Signatures.A, Signatures.B
+#n1 = the number of mutations that we want to generate from the Signature.A
+#n2 = the number of mutations that we want to generate from the Signature.B
+
+plot_sample_prof <- function(A, B, n1, n2){
+
+  cosmic.signatures <- load_cosmic_matrix()
+  sig <- cosmic.signatures[,c(A, B)]
+  sig.labels <-  c("A","B")
+  colnames(sig) <- sig.labels
+  
+  #generate random mutation samples of Signature 10
+  a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
+  df_a <- as_tibble(a)
+  df_a <- df_a %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n),
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_a[is.na(df_a)] <- 0     # Replace NA with 0
+  
+  #generate random mutation samples of Signature 6
+  b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
+  df_b <- as_tibble(b)
+  df_b <- df_b %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n)
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_b[is.na(df_b)] <- 0     # Replace NA with 0
+  
+  #join those two sample mutations
+  mut_df <- df_a %>%
+    inner_join(df_b, by = "value") %>%
+    mutate(
+      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
+    ) %>%
+    select(value, prob)
+  
+  #plot the sample mutational profile
+  rownames(mut_df) <- mut_df$value
+  mut_df <- mut_df %>%
+    select(prob)
+  
+  plot_96_profile(mut_df)
+}
+```
+
+Function for generating the simple Linear regression model for the generated sample mutational profile based on Signature.A and Signature.B.
+```{r}
+lm_test <- function(sample_profile, sigA, sigB){
+  sig <-cosmic.signatures[,c(sigA,sigB)]
+  sig.labels <- c("sigA", "sigB")
+  colnames(sig) <- sig.labels
+ 
+  data<- cbind(sample_profile,sig)
+  data<-as_tibble(data)
+  model<- lm(prob ~ 0 + sigA + sigB, data=data)
+  
+  tidy <- model %>% tidy()
+  tidy$estimate
+}
+```
+
+Function testing
+```{r}
+#A, B = Signatures.A, Signatures.B
+#n1 = the number of mutations that we want to generate from the Signature.A
+#n2 = the number of mutations that we want to generate from the Signature.B
+
+#generate_sample_prof(A, B, n1, n2)
+plot_sample_prof(10,6,2000,8000)
+#generate_sample_prof(A, B, n1, n2)
+sample_profile <- generate_sample_prof(10,6,2000,8000)
+#lm_test(sample_profile, A, B)
+lm_test(sample_profile,10,6)
+
+sample_profile <- generate_sample_prof(10,6,200,800)
+lm_test(sample_profile,10,6)
+
+sample_profile <- generate_sample_prof(1,6,10,100)
+lm_test(sample_profile,1,6)
+
+sample_profile <- generate_sample_prof(6,10,100,900)
+lm_test(sample_profile,6,10)
+```
+
+
+Plot function for the Coefficients change 
+```{r, message=FALSE, warning=FALSE}
+coeff_change <- function(n, A, B){
+  sum_n <- c(n)
+  percent <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)
+  
+  predicted_A <- c()
+  predicted_B <- c()
+  amount <- c()
+  
+  for (i in sum_n){
+    for (j in percent){
+      sample_profile <- generate_sample_prof(A,B,i*j,i*(1-j))
+      coeff <- lm_test(sample_profile,A,B)
+      
+      predicted_A <- append(predicted_A, coeff[1])
+      predicted_B <- append(predicted_B, coeff[2])
+      
+      amount <- append(amount, j)
+    }
+  }
+  
+  df <- as.tibble(cbind(amount, predicted_A, predicted_B))
+  df
+}
+```
+
+Function testing
+```{r}
+df_1000 <- coeff_change(1000, 10, 6)
+df_100 <- coeff_change(100, 10, 6)
+amount <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+
+df_1000 %>%
+  pivot_longer(
+    cols = c(`predicted_A`, `predicted_B`),
+    names_to = "signature", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = signature)) +
+    geom_point() +
+    scale_x_continuous(labels = amount, breaks = amount)
+
+df_100 %>%
+  pivot_longer(
+    cols = c(`predicted_A`, `predicted_B`),
+    names_to = "signature", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = signature)) +
+    geom_point() +
+    scale_x_continuous(labels = amount, breaks = amount)
+```
+
+
+Signature 10 plot
+Check when Signature 10 is 10%, 20%, ... 100% of the mutations
+```{r}
+#join the dataframe when `n`(the number of data) is from 1000 to 100
+#check when Signature 10 is 10%, 20%, ... 100% of the mutations
+
+df_10 <- coeff_change(1000, 10, 6)
+n <- c(900,800,700,600,500,400,300,200,100)
+
+for (i in n){
+  df_n <- coeff_change(i, 10, 6)
+  df_10 <- df_10 %>% 
+    full_join(df_n, by = "amount") 
+}
+
+df.labels <-  c("amount", "1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+colnames(df_10) <- df.labels
+```
+
+```{r}
+#Plot for both signatures
+df_10 %>%
+  pivot_longer(
+    cols = c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B"),
+    names_to = "n", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  mutate(
+    type = ifelse(str_detect(n, "A"), "Sig A", "Sig B")
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = type)) +
+    geom_point() +
+    scale_x_continuous("amount", labels = as.character(amount), breaks = amount) 
+
+
+df.levels <-  c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+
+df_A <- df_10 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(`1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`),
+    names_to = "n.A", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+df_B <- df_10 %>%
+  select(amount, `1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`) %>%
+  pivot_longer(
+    cols = c(`1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`),
+    names_to = "n.B", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+#Individual plot
+#Signature A plot
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = n.A)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+#Signature B plot
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+```
+
+
+Signature 6 plot
+Check when Signature 6 is 10%, 20%, ... 100% of the mutations
+```{r}
+#join the dataframe when `n`(the number of data) is from 1000 to 100
+#check when Signature 10 is 10%, 20%, ... 100% of the mutations
+
+df_6 <- coeff_change(1000, 6, 10)
+n <- c(900,800,700,600,500,400,300,200,100)
+
+for (i in n){
+  df_n <- coeff_change(i, 6, 10)
+  df_6 <- df_6 %>% 
+    full_join(df_n, by = "amount") 
+}
+
+df.labels <-  c("amount", "1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+colnames(df_6) <- df.labels
+```
+
+```{r}
+#Plot for both signatures
+df_6 %>%
+  pivot_longer(
+    cols = c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B"),
+    names_to = "n", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) %>%
+  mutate(
+    type = ifelse(str_detect(n, "A"), "Sig A", "Sig B")
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = type)) +
+    geom_point() +
+    scale_x_continuous("amount", labels = as.character(amount), breaks = amount) 
+
+
+df.levels <-  c("1000.A","1000.B", "900.A","900.B", "800.A","800.B", "700.A","700.B", "600.A","600.B", "500.A","500.B", "400.A","400.B", "300.A","300.B", "200.A","200.B", "100.A","100.B")
+
+df_A <- df_6 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(`1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`),
+    names_to = "n.A", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+df_B <- df_6 %>%
+  select(amount, `1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`) %>%
+  pivot_longer(
+    cols = c(`1000.B`, `900.B`, `800.B`, `700.B`, `600.B`, `500.B`, `400.B`, `300.B`, `200.B`, `100.B`),
+    names_to = "n.B", 
+    values_to = "predicted", 
+    values_drop_na = TRUE
+  ) 
+
+#Individual plot
+#Signature A plot
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted, color = n.A)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+df_A %>%
+  mutate(
+    n.A = factor(n.A, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.A)
+
+#Signature B plot
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) 
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+
+df_B %>%
+  mutate(
+    n.B = factor(n.B, levels = df.levels)
+  ) %>%
+  ggplot(aes(x = amount, y = predicted)) +
+    geom_line() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n.B)
+```
+
+Compare two Signature 10, 6 on the sample plot
+```{r}
+df_s10 <- df_10 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(-amount),
+    names_to = "n", 
+    values_to = "Sig10.prob", 
+    values_drop_na = TRUE
+  ) 
+
+df_s6 <- df_6 %>%
+  select(amount, `1000.A`, `900.A`, `800.A`, `700.A`, `600.A`, `500.A`, `400.A`, `300.A`, `200.A`, `100.A`) %>%
+  pivot_longer(
+    cols = c(-amount),
+    names_to = "n", 
+    values_to = "Sig6.prob", 
+    values_drop_na = TRUE
+  )
+
+s_10_6 <- df_s10 %>%
+  full_join(df_s6, by = c("amount", "n")) %>%
+  pivot_longer(
+    cols = c(`Sig10.prob`, `Sig6.prob`),
+    names_to = "Signature", 
+    values_to = "prob", 
+    values_drop_na = TRUE
+  )
+
+s_10_6 %>%
+  ggplot(aes(x = amount, y = prob, color = Signature)) +
+    geom_point() +
+    scale_x_continuous(labels = as.character(amount), breaks = amount) +
+    facet_wrap(~n)
+```
+
