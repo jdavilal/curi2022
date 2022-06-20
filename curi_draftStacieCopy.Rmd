@@ -16,6 +16,7 @@ library(grid)
 library(gridExtra)
 library(ggpubr)
 library(ggrepel)
+library(broom)
 ```
 
 ## Preliminary functions
@@ -26,7 +27,7 @@ The following functions allow us to load and analyze mutational signatures
 # Loads a mutational signature matrix from a mutational signature txt file
 load_old_mutational_matrix<- 
   function(filename,
-          mut.order="~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv") {
+          mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
   mutational.signature <-  read_csv(filename)
   mut_mat <-  read_csv(mut.order)
 
@@ -49,7 +50,7 @@ load_old_mutational_matrix<-
 
 change_old_mutational_matrix<-
     function(sig.frame,
-             mut.order="~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv") {
+             mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
         
   mutational.signature <-  sig.frame
   mut_mat <-  read_csv(mut.order)
@@ -73,7 +74,7 @@ change_old_mutational_matrix<-
     return (t(mut.matrix))
 }
 
-load_cosmic_matrix<- function(mut.order="~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv") {
+load_cosmic_matrix<- function(mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
 
   sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
                 "signatures_probabilities.txt", sep = "")
@@ -155,19 +156,19 @@ We load the mutational signatures file for all of the samples and consider only
 samples that have high sequencing coverage (over 5Mb at 20x)
 ```{r}
 # Load mutational signature data for all samples
-signatures <- read_csv("~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mutational.sig.csv")
+signatures <- read_csv("mutational_sig_oec/supplied_data/mutational.sig.csv")
 
 # Load sequencing/cohort info for samples, filter with at
 # at least 5 million Mb covered
 sample.info <-
-    read_csv("~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/sample.info.csv") %>%
+    read_csv("mutational_sig_oec/supplied_data/sample.info.csv") %>%
     filter (area.cov > 5e6)
 ```
 
 ## Linear regression model
 ```{r}
 #Load the P3, Sig10,6,5 data
-data <- read_csv("~/CURI 2022/curi2022/Data/P3_sig.csv")
+data <- read_csv("Data/P3_sig.csv")
 
 model1 <- lm(p3 ~ 0 + sig10 + sig6, data = data)
 summary(model1)
@@ -206,7 +207,7 @@ mut.selected <- sample.info %>%
   select (sample) %>%
   inner_join (signatures)
 
-mut.order="~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
+mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -267,7 +268,7 @@ sample_profile
 ## Function for generating the sample mutation profiles
 Load the Mutation signatures order
 ```{r}
-mut.order="~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
+mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -293,7 +294,7 @@ generate_sample_prof <- function(A, B, n){
     select (sample) %>%
     inner_join (signatures)
   
-  mut.order="~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
+  mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -362,18 +363,20 @@ generate_sample_prof(10,1,500)
 
 Function for Linear Regression
 ```{r}
-function_test <- function(x,y,z){
-  sig <-cosmic.signatures[,c(y,z)]
-  sig.labels <- c("y", "z")
+lm_test <- function(sample_profile, sigA, sigB){
+  sig <-cosmic.signatures[,c(sigA,sigB)]
+  sig.labels <- c("sigA", "sigB")
   colnames(sig) <- sig.labels
  
-  data<- cbind(x,sig)
+  data<- cbind(sample_profile,sig)
   data<-as_tibble(data)
-  model<- lm(x ~0+ y + z, data=data)
-  summary(model)
+  model<- lm(prob ~ 0 + sigA + sigB, data=data)
+  
+  tidy <- model %>% tidy()
+  tidy$estimate
 }
 
-function_test(data$p3,10,6)
+lm_test(data$p3,10,6)
 ```
 
 Testing LR Function with Simulated Data
@@ -386,26 +389,12 @@ function_test(test_data, 10, 6)
 
 Modifying the function to create profiles with different number of mutations
 ```{r}
-generate_sample_prof_new <- function(A, B, n1, n2){
+generate_sample_prof <- function(A, B, n1, n2){
 
   cosmic.signatures <- load_cosmic_matrix()
   sig <- cosmic.signatures[,c(A, B)]
   sig.labels <-  c("A","B")
   colnames(sig) <- sig.labels
-  
-  #load the mutation order
-  mut.selected <- sample.info %>%
-    select (sample) %>%
-    inner_join (signatures)
-  
-    mut.order="~/CURI 2022/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
-mutational.signature <-  mut.selected
-mut_mat <-  read_csv(mut.order)
-
-mut.join <-  mutational.signature %>%
-  inner_join(mut_mat)
-order.tri <-  unique(mut.join$ext.context)
-mut_order <- as_tibble(order.tri)
   
   #generate random mutation samples of Signature 10
   a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
@@ -419,10 +408,6 @@ mut_order <- as_tibble(order.tri)
     merge(mut_order, all = TRUE)
   
   df_a[is.na(df_a)] <- 0     # Replace NA with 0
-  df_a <- df_a %>%
-    mutate(
-      prob = prob + 1e-04
-    )
   
   #generate random mutation samples of Signature 6
   b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
@@ -436,10 +421,6 @@ mut_order <- as_tibble(order.tri)
     merge(mut_order, all = TRUE)
   
   df_b[is.na(df_b)] <- 0     # Replace NA with 0
-  df_b <- df_b %>%
-    mutate(
-      prob = prob + 1e-04
-    )
   
   #join those two sample mutations
   mut_df <- df_a %>%
@@ -458,7 +439,7 @@ mut_order <- as_tibble(order.tri)
 }
 ```
 
-Testing Out Updated Function
+Testing Out Updated Function (disregard)
 ```{r}
 test_data2 <- generate_sample_prof_new(10, 6, 600, 400)
 function_test(test_data2, 10, 6)
@@ -488,6 +469,102 @@ function_test(test_data6, 1, 10)
 test_data7 <- generate_sample_prof_new(1, 10, 3000, 7000)
 function_test(test_data7, 1, 10)
 #coefficient are quite different near what we would expect
+```
+
+
+fit_to_signatures exploration
+```{r}
+sample1 <- generate_sample_prof(10, 6, 600, 400)
+
+signatures <- get_known_signatures()
+
+#Test with simulated sample profile
+fit_to_signatures(sample1, signatures)
+fit_test <- fit_to_signatures_strict(sample1, signatures[,c(6, 13, 14)], max_delta = 0.002)
+fit_test <- fit_test$fit_res$contribution
+df <- cbind(signatures = rownames(fit_test), fit_test)
+rownames(df) <- 1:nrow(df)
+df <- as_tibble(df) %>%
+  pivot_wider(names_from = signatures, values_from = prob)
+df %>%
+  mutate(SBS10 = as.numeric(SBS10a) + as.numeric(SBS10b), 
+         SBS6 = as.numeric(SBS6))
+
+#Another simulated profile
+sample2 <- generate_sample_prof(6, 11, 100, 900)
+fit_to_signatures(sample2, signatures)
+fit_test <- fit_to_signatures_strict(sample2, signatures[,c(6, 17)], max_delta = 0.002)
+fit_test <- fit_test$fit_res$contribution
+df <- cbind(signatures = rownames(fit_test), fit_test)
+rownames(df) <- 1:nrow(df)
+df <- as_tibble(df) %>%
+  pivot_wider(names_from = signatures, values_from = prob)
+df %>%
+  mutate(SBS11 = as.numeric(SBS11), 
+         SBS6 = as.numeric(SBS6))
+
+#Testing function with P3 sample
+P3 <- data$p3
+P3 <- as.matrix(P3)
+fit_to_signatures(P3, signatures)
+fit_test1 <- fit_to_signatures_strict(P3, signatures[,c(1, 6, 13, 14)], max_delta = 0.002)
+fit_test1 <- fit_test1$fit_res$contribution
+df <- cbind(signatures = rownames(fit_test1), fit_test1)
+rownames(df) <- 1:nrow(df)
+df <- as_tibble(df) %>%
+  pivot_wider(names_from = signatures, values_from = "1")
+df %>%
+  mutate(SBS10 = as.numeric(SBS10a) + as.numeric(SBS10b), 
+         SBS6 = as.numeric(SBS6))
+
+```
+
+Testing fit_to_signatures against our function
+```{r}
+#Comparision 1
+sample2 <- generate_sample_prof(6, 11, 100, 900)
+fit_to_signatures(sample2, signatures)
+fit_test <- fit_to_signatures_strict(sample2, signatures[,c(6, 17)], max_delta = 0.002)
+fit_test <- fit_test$fit_res$contribution
+df <- cbind(signatures = rownames(fit_test), fit_test)
+rownames(df) <- 1:nrow(df)
+df <- as_tibble(df) %>%
+  pivot_wider(names_from = signatures, values_from = prob)
+df %>%
+  mutate(SBS11 = as.numeric(SBS11), 
+         SBS6 = as.numeric(SBS6))
+
+lm_test(sample2, 6, 11)
+
+#Comparision 2
+sample3 <- generate_sample_prof(1, 4, 500, 500)
+fit_to_signatures(sample3, signatures)
+fit_test <- fit_to_signatures_strict(sample3, signatures[,c(1, 4)], max_delta = 0.002)
+fit_test <- fit_test$fit_res$contribution
+df <- cbind(signatures = rownames(fit_test), fit_test)
+rownames(df) <- 1:nrow(df)
+df <- as_tibble(df) %>%
+  pivot_wider(names_from = signatures, values_from = prob)
+df %>%
+  mutate(SBS1 = as.numeric(SBS1), 
+         SBS4 = as.numeric(SBS4))
+
+lm_test(sample3, 1, 4)
+
+#Comparision 3
+sample4 <- generate_sample_prof(1, 6, 200, 800)
+fit_to_signatures(sample4, signatures)
+fit_test <- fit_to_signatures_strict(sample4, signatures[,c(1, 6)], max_delta = 0.001)
+fit_test <- fit_test$fit_res$contribution
+df <- cbind(signatures = rownames(fit_test), fit_test)
+rownames(df) <- 1:nrow(df)
+df <- as_tibble(df) %>%
+  pivot_wider(names_from = signatures, values_from = prob)
+df %>%
+  mutate(SBS1 = as.numeric(SBS1), 
+         SBS6 = as.numeric(SBS6))
+
+lm_test(sample4, 1, 6)
 ```
 
 
