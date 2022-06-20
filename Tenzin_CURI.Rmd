@@ -1,7 +1,7 @@
 ---
 title: "curi1"
 output: html_document
-editor_options:
+editor_options: 
   chunk_output_type: console
 ---
 
@@ -24,21 +24,21 @@ The following functions allow us to load and analyze mutational signatures
 
 ```{r}
 # Loads a mutational signature matrix from a mutational signature txt file
-load_old_mutational_matrix<-
+load_old_mutational_matrix<- 
   function(filename,
-          mut.order="supplied_data/mut_sig.order.csv") {
+          mut.order="~/Desktop/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv") {
   mutational.signature <-  read_csv(filename)
   mut_mat <-  read_csv(mut.order)
 
   mut.join <-  mutational.signature %>%
     inner_join(mut_mat)
- 
+  
   order.tri <-  unique(mut.join$ext.context)
 
   mut.join <-  mut.join %>%
     mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
     select(ext.context,prob)
- 
+  
   mut.matrix <-  as.matrix(
         sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
 
@@ -49,14 +49,14 @@ load_old_mutational_matrix<-
 
 change_old_mutational_matrix<-
     function(sig.frame,
-             mut.order="supplied_data/mut_sig.order.csv") {
-       
+             mut.order="~/Desktop/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv") {
+        
   mutational.signature <-  sig.frame
   mut_mat <-  read_csv(mut.order)
 
   mut.join <-  mutational.signature %>%
     inner_join(mut_mat)
- 
+  
   order.tri <-  unique(mut.join$ext.context)
 
   mut.join <-  mut.join %>%
@@ -65,7 +65,7 @@ change_old_mutational_matrix<-
       select(sample,ext.context,prob) %>%
       pivot_wider(names_from = ext.context,
                   values_from = prob)
-   
+    
     mut.matrix <-  as.matrix(
         sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
     rownames(mut.matrix) = mut.join$sample
@@ -73,7 +73,7 @@ change_old_mutational_matrix<-
     return (t(mut.matrix))
 }
 
-load_cosmic_matrix<- function(mut.order="supplied_data/mut_sig.order.csv") {
+load_cosmic_matrix<- function(mut.order="~/Desktop/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv") {
 
   sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
                 "signatures_probabilities.txt", sep = "")
@@ -81,7 +81,7 @@ load_cosmic_matrix<- function(mut.order="supplied_data/mut_sig.order.csv") {
   cancer_signatures <-  read.table(sp_url, sep = "\t", header = TRUE)
   # Match the order of the mutation types to MutationalPatterns standard
   mut_mat <-  read_csv(mut.order)
-  new_order <-  match(mut_mat$ext.context, cancer_signatures$Somatic.Mutation.Type)
+  new_order <-  match(mut_mat$ext.context, cancer_signatures$Somatic.Mutation.Type) 
   # Reorder cancer signatures dataframe
   cancer_signatures <-  cancer_signatures[as.vector(new_order),]
   # Add trinucletiode changes names as row.names
@@ -95,7 +95,7 @@ load_cosmic_matrix<- function(mut.order="supplied_data/mut_sig.order.csv") {
 # contribution of each signature for each sample
 calc_abs_contribution <- function(nmf.res,sig.names) {
 
-  total_signatures <-  colSums(nmf.res$signatures)
+  total_signatures <-  colSums(nmf.res$signatures) 
   abs_contribution <-  nmf.res$contribution * total_signatures
   rownames(abs_contribution) <- sig.names
 
@@ -131,7 +131,7 @@ get_top_signature <-function(mut.table, signatures.table,
         arrange(desc(contribution))
 
     # Pick top n samples for that signature
-    top.table <-
+    top.table <- 
         sig.table %>% arrange(desc(contribution)) %>%
         head(top.n)
 
@@ -151,23 +151,24 @@ get_top_signature <-function(mut.table, signatures.table,
 
 ## Data acquisition and cleaning
 
-We load the mutational signatures file for all of the samples and consider only
+We load the mutational signatures file for all of the samples and consider only 
 samples that have high sequencing coverage (over 5Mb at 20x)
 ```{r}
 # Load mutational signature data for all samples
-signatures <- read_csv("~/Desktop/CURI/mutational.sig.csv")
+signatures <- read_csv(
+    "~/Desktop/curi2022/mutational_sig_oec/supplied_data/mutational.sig.csv")
 
 # Load sequencing/cohort info for samples, filter with at
 # at least 5 million Mb covered
 sample.info <-
-    read_csv("~/Desktop/CURI/sample.info.csv") %>%
+    read_csv("~/Desktop/curi2022/mutational_sig_oec/supplied_data/sample.info.csv") %>%
     filter (area.cov > 5e6)
 ```
 
 ## Linear regression model
 ```{r}
 #Load the P3, Sig10,6,5 data
-data <- read_csv("~/CURI 2022/curi2022/Data/P3_sig.csv")
+data <- read_csv("~/Desktop/curi2022/Data/P3_sig.csv")
 
 model1 <- lm(p3 ~ 0 + sig10 + sig6, data = data)
 summary(model1)
@@ -183,7 +184,7 @@ ggplot(data, aes(sig10, p3)) +
 data1 <- data %>%
   pivot_longer(
     cols = c(`sig10`, `sig6`, `sig1`),
-    names_to = "signatures",
+    names_to = "signatures", 
     values_to = "prob"
   )
 
@@ -206,7 +207,7 @@ mut.selected <- sample.info %>%
   select (sample) %>%
   inner_join (signatures)
 
-mut.order="supplied_data/mut_sig.order.csv"
+mut.order="~/Desktop/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -267,7 +268,96 @@ sample_profile
 ## Function for generating the sample mutation profiles
 Load the Mutation signatures order
 ```{r}
-mut.order="supplied_data/mut_sig.order.csv"
+mut.order="~/Desktop/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
+mutational.signature <-  mut.selected
+mut_mat <-  read_csv(mut.order)
+
+mut.join <-  mutational.signature %>%
+  inner_join(mut_mat)
+order.tri <-  unique(mut.join$ext.context)
+mut_order <- as_tibble(order.tri)
+```
+
+Function for generating the sample mutation profiles 
+```{r}
+#A, B = Signatures.A, Signatures.B
+#n = the number of mutations that we want to generate
+generate_sample_prof <- function(A, B, n){
+
+  cosmic.signatures <- load_cosmic_matrix()
+  sig <- cosmic.signatures[,c(A, B)]
+  sig.labels <-  c("A","B")
+  colnames(sig) <- sig.labels
+  
+  #load the mutation order
+  mut.selected <- sample.info %>%
+    select (sample) %>%
+    inner_join (signatures)
+  
+  #generate random mutation samples of Signature 10
+  a <- sample(rownames(sig), size = n, replace = TRUE, prob = as.vector(sig[,"A"]))
+  df_a <- as_tibble(a)
+  df_a <- df_a %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n),
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_a[is.na(df_a)] <- 0     # Replace NA with 0
+  df_a <- df_a %>%
+    mutate(
+      prob = prob + 1e-04
+    )
+  
+  #generate random mutation samples of Signature 6
+  b <- sample(rownames(sig), size = n, replace = TRUE, prob = as.vector(sig[,"B"]))
+  df_b <- as_tibble(b)
+  df_b <- df_b %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n)
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_b[is.na(df_b)] <- 0     # Replace NA with 0
+  df_b <- df_b %>%
+    mutate(
+      prob = prob + 1e-04
+    )
+  
+  #join those two sample mutations
+  mut_df <- df_a %>%
+    inner_join(df_b, by = "value") %>%
+    mutate(
+      prob = (prob.x + prob.y)/2
+    ) %>%
+    select(value, prob)
+  
+  #define the sample profile created by two sample mutations
+  sample_profile <- mut_df %>%
+    select(prob)
+  sample_profile <- as.matrix(sample_profile)
+  
+  sample_profile
+}
+```
+
+```{r}
+#A, B = Signatures.A, Signatures.B
+#n = the number of mutations that we want to generate
+generate_sample_prof(10,6,500)
+generate_sample_prof(10,1,500)
+```
+
+
+
+## Function for generating the sample mutation profiles
+Load the Mutation signatures order
+```{r}
+mut.order="~/Desktop/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -367,6 +457,8 @@ function_test <- function(x,y,z){
 function_test(data$p3,10,6)
 ```
 
+
+
 Testing LR Function with Simulated Data
 ```{r}
 test_data <- generate_sample_prof(10,6,500)
@@ -375,20 +467,32 @@ function_test(test_data, 10, 6)
 #output is expected with each coefficient being 0.5 or 1/2, since this is what we put into the sample mutational profile called test_data
 ```
 
+
+
 Modifying the function to create profiles with different number of mutations
 ```{r}
+
 generate_sample_prof_new <- function(A, B, n1, n2){
 
   cosmic.signatures <- load_cosmic_matrix()
   sig <- cosmic.signatures[,c(A, B)]
   sig.labels <-  c("A","B")
   colnames(sig) <- sig.labels
- 
+  
   #load the mutation order
   mut.selected <- sample.info %>%
     select (sample) %>%
     inner_join (signatures)
- 
+  
+    mut.order="~/Desktop/curi2022/mutational_sig_oec/supplied_data/mut_sig.order.csv"
+mutational.signature <-  mut.selected
+mut_mat <-  read_csv(mut.order)
+
+mut.join <-  mutational.signature %>%
+  inner_join(mut_mat)
+order.tri <-  unique(mut.join$ext.context)
+mut_order <- as_tibble(order.tri)
+  
   #generate random mutation samples of Signature 10
   a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
   df_a <- as_tibble(a)
@@ -399,13 +503,13 @@ generate_sample_prof_new <- function(A, B, n1, n2){
       prob = n/sum(n),
     ) %>%
     merge(mut_order, all = TRUE)
- 
+  
   df_a[is.na(df_a)] <- 0     # Replace NA with 0
   df_a <- df_a %>%
     mutate(
       prob = prob + 1e-04
     )
- 
+  
   #generate random mutation samples of Signature 6
   b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
   df_b <- as_tibble(b)
@@ -416,38 +520,31 @@ generate_sample_prof_new <- function(A, B, n1, n2){
       prob = n/sum(n)
     ) %>%
     merge(mut_order, all = TRUE)
- 
+  
   df_b[is.na(df_b)] <- 0     # Replace NA with 0
   df_b <- df_b %>%
     mutate(
       prob = prob + 1e-04
     )
- 
+  
   #join those two sample mutations
   mut_df <- df_a %>%
     inner_join(df_b, by = "value") %>%
     mutate(
-      prob = .60*prob.x + .40*prob.y
+      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
     ) %>%
     select(value, prob)
- 
+  
   #define the sample profile created by two sample mutations
   sample_profile <- mut_df %>%
     select(prob)
-  
-
-    
   sample_profile <- as.matrix(sample_profile)
-
   
-
-row_number(sample_profile2)
-  
-mut_df %>%
-ggplot(aes(x= value))+
-  geom_bar()
+  sample_profile
 }
 ```
+
+
 
 Testing Out Updated Function
 ```{r}
@@ -475,4 +572,13 @@ function_test(test_data4, 1, 4)
 test_data5 <- generate_sample_prof_new(1, 10, 1000, 9000)
 
 function_test(test_data5, 1, 10)
+
+
+data 
+x <- model.matrix(p3 ~ ., data)[, -1]
+y <- log(data$sig10)
+glmnet(x,y ,lower.limits = 0, intercept = FALSE)
+summary(model1)
+
 ```
+
