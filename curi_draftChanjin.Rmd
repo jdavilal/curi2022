@@ -532,7 +532,7 @@ generate_sample_prof <- function(A, B, n1, n2){
 }
 ```
 
-This function is plotting the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and n2` of each signature.
+This function is plotting the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and `n2` of each signature.
 ```{r}
 #A, B = Signatures.A, Signatures.B
 #n1 = the number of mutations that we want to generate from the Signature.A
