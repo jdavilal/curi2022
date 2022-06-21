@@ -458,8 +458,7 @@ generate_sample_prof1 <- function(A, B, n1, n2){
 
 
 ## COSMIC Version 3 (new version)
-This function is generating the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and n2` of each signature. 
-`n1` is the number of mutations that we want to generate from the Signature.A `n2` is the number of mutations that we want to generate from the Signature.B
+This function is generating the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and `n2` of each signature.`n1` is the number of mutations that we want to generate from the Signature.A `n2` is the number of mutations that we want to generate from the Signature.B
 
 ```{r, message=FALSE, warning=FALSE}
 #A, B = Signatures.A, Signatures.B
