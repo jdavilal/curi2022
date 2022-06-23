@@ -280,115 +280,6 @@ mut_order <- as_tibble(order.tri)
 
 Function for generating the sample mutation profiles 
 ```{r}
-#A, B = Signatures.A, Signatures.B
-#n = the number of mutations that we want to generate
-generate_sample_prof <- function(A, B, n){
-
-  cosmic.signatures <- load_cosmic_matrix()
-  sig <- cosmic.signatures[,c(A, B)]
-  sig.labels <-  c("A","B")
-  colnames(sig) <- sig.labels
-  
-  #load the mutation order
-  mut.selected <- sample.info %>%
-    select (sample) %>%
-    inner_join (signatures)
-  
-  mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
-mutational.signature <-  mut.selected
-mut_mat <-  read_csv(mut.order)
-
-mut.join <-  mutational.signature %>%
-  inner_join(mut_mat)
-order.tri <-  unique(mut.join$ext.context)
-mut_order <- as_tibble(order.tri)
-  
-  #generate random mutation samples of Signature 10
-  a <- sample(rownames(sig), size = n, replace = TRUE, prob = as.vector(sig[,"A"]))
-  df_a <- as_tibble(a)
-  df_a <- df_a %>%
-    count(value) %>%
-    mutate(
-      value = factor(value, levels = order.tri),
-      prob = n/sum(n),
-    ) %>%
-    merge(mut_order, all = TRUE)
-  
-  df_a[is.na(df_a)] <- 0     # Replace NA with 0
-  df_a <- df_a %>%
-    mutate(
-      prob = prob + 1e-04
-    )
-  
-  #generate random mutation samples of Signature 6
-  b <- sample(rownames(sig), size = n, replace = TRUE, prob = as.vector(sig[,"B"]))
-  df_b <- as_tibble(b)
-  df_b <- df_b %>%
-    count(value) %>%
-    mutate(
-      value = factor(value, levels = order.tri),
-      prob = n/sum(n)
-    ) %>%
-    merge(mut_order, all = TRUE)
-  
-  df_b[is.na(df_b)] <- 0     # Replace NA with 0
-  df_b <- df_b %>%
-    mutate(
-      prob = prob + 1e-04
-    )
-  
-  #join those two sample mutations
-  mut_df <- df_a %>%
-    inner_join(df_b, by = "value") %>%
-    mutate(
-      prob = (prob.x + prob.y)/2
-    ) %>%
-    select(value, prob)
-  
-  #define the sample profile created by two sample mutations
-  sample_profile <- mut_df %>%
-    select(prob)
-  sample_profile <- as.matrix(sample_profile)
-  
-  sample_profile
-}
-```
-
-```{r}
-#A, B = Signatures.A, Signatures.B
-#n = the number of mutations that we want to generate
-generate_sample_prof(10,6,500)
-generate_sample_prof(10,1,500)
-```
-
-Function for Linear Regression
-```{r}
-lm_test <- function(sample_profile, sigA, sigB){
-  sig <-cosmic.signatures[,c(sigA,sigB)]
-  sig.labels <- c("sigA", "sigB")
-  colnames(sig) <- sig.labels
- 
-  data<- cbind(sample_profile,sig)
-  data<-as_tibble(data)
-  model<- lm(prob ~ 0 + sigA + sigB, data=data)
-  
-  tidy <- model %>% tidy()
-  tidy$estimate
-}
-
-lm_test(data$p3,10,6)
-```
-
-Testing LR Function with Simulated Data
-```{r}
-test_data <- generate_sample_prof(10,6,500)
-
-function_test(test_data, 10, 6)
-#output is expected with each coefficient being 0.5 or 1/2, since this is what we put into the sample mutational profile called test_data
-```
-
-Modifying the function to create profiles with different number of mutations
-```{r}
 generate_sample_prof <- function(A, B, n1, n2){
 
   cosmic.signatures <- load_cosmic_matrix()
@@ -439,36 +330,23 @@ generate_sample_prof <- function(A, B, n1, n2){
 }
 ```
 
-Testing Out Updated Function (disregard)
+
+Function for Linear Regression
 ```{r}
-test_data2 <- generate_sample_prof_new(10, 6, 600, 400)
-function_test(test_data2, 10, 6)
-#this is not as accurate, we would expect the coefficients to be 0.6 for Sig 10 (y) and 0.4 for Sig 6 (z)
+lm_test <- function(sample_profile, sigA, sigB){
+  sig <-cosmic.signatures[,c(sigA,sigB)]
+  sig.labels <- c("sigA", "sigB")
+  colnames(sig) <- sig.labels
+ 
+  data<- cbind(sample_profile,sig)
+  data<-as_tibble(data)
+  model<- lm(prob ~ 0 + sigA + sigB, data=data)
+  
+  tidy <- model %>% tidy()
+  tidy$estimate
+}
 
-test_data3 <- generate_sample_prof_new(10, 6, 900, 100)
-function_test(test_data3, 10, 6)
-#again, not ideal results. going back to make sure I modified the function correctly
-#note: everything looks correct in the function
-
-test_data4 <- generate_sample_prof_new(1, 4, 900, 100)
-function_test(test_data4, 1, 4)
-#coefficient are quite different near what we would expect
-
-test_data4 <- generate_sample_prof_new(1, 4, 500, 500)
-function_test(test_data4, 1, 4)
-#coefficients are close, but still not accurate to our simulated data
-
-test_data5 <- generate_sample_prof_new(1, 10, 1000, 9000)
-function_test(test_data5, 1, 10)
-#coefficient are quite different near what we would expect
-
-test_data6 <- generate_sample_prof_new(1, 10, 1, 9)
-function_test(test_data6, 1, 10)
-#coefficient are quite different near what we would expect
-
-test_data7 <- generate_sample_prof_new(1, 10, 3000, 7000)
-function_test(test_data7, 1, 10)
-#coefficient are quite different near what we would expect
+lm_test(data$p3,10,6)
 ```
 
 
@@ -551,7 +429,7 @@ df %>%
 
 lm_test(sample3, 1, 4)
 
-#Comparision 3
+#Comparison 3
 sample4 <- generate_sample_prof(1, 6, 200, 800)
 fit_to_signatures(sample4, signatures)
 fit_test <- fit_to_signatures_strict(sample4, signatures[,c(1, 6)], max_delta = 0.001)
@@ -566,5 +444,65 @@ df %>%
 
 lm_test(sample4, 1, 6)
 ```
+
+Getting signature data from COSMIC for making constraints
+```{r}
+library(data.table)
+cosmic_sig1 <- fread("https://cog.sanger.ac.uk/cosmic-signatures-production/documents/v3.2_SBS1_TISSUE.txt")
+
+url1 <- "https://cog.sanger.ac.uk/cosmic-signatures-production/documents/v3.2_"
+  url2 <- "_TISSUE.txt"
+  url <- paste(url1, as.character("SBS1"), url2, sep="", collapse=NULL)
+test <- fread(url)
+
+get_sig_data <- function(A){
+  
+  url1 <- "https://cog.sanger.ac.uk/cosmic-signatures-production/documents/v3.2_"
+  url2 <- "_TISSUE.txt"
+  url <- paste(url1, as.character(A), url2, sep="", collapse=NULL)
+  cosmic_sig <- fread(url)
+  cosmic_sig
+}
+
+SBS1 <- get_sig_data("SBS1")
+SBS2 <- get_sig_data("SBS2")
+```
+
+Getting Ranges from signature data
+```{r}
+test1 <- SBS1 %>%
+  filter(Scale == "exome", Cancer.Types == "Breast") %>%
+  mutate(mutations = SBS1.Mutations,
+         prob = (mutations/50))
+quantile(test1$prob)
+
+test2 <- SBS1 %>%
+  filter(Scale == "genome", Cancer.Types == "Breast") %>%
+  mutate(mutations = SBS1.Mutations,
+         prob = (mutations/3000))
+range2 <- quantile(test2$prob)
+range2[c(2,4)]
+
+
+#trying to make it into a function
+get_range <- function(data, scale, cancer_type, mutations_name){
+  
+  data_test <- data %>%
+    filter(Scale == scale, Cancer.Types == cancer_type) %>%
+    mutate(prob = ifelse(Scale == "genome", ({{ mutations_name }}/3000), ({{ mutations_name }}/50)))
+  range <- quantile(data_test$prob)
+  range[c(2,4)]
+}
+
+SBS1_test <- SBS1 %>%
+  filter(Scale == "exome", Cancer.Types == "Breast") %>%
+    mutate(prob = ifelse(Scale == "genome", (SBS1.Mutations/3000), (SBS1.Mutations/50)))
+  range <- quantile(SBS1_test$prob)
+  range[c(2,4)]
+  
+
+get_range(SBS1, "exome", "Skin-SCC", SBS1.Mutations)
+```
+
 
 
