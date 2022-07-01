@@ -17,6 +17,7 @@ library(gridExtra)
 library(ggpubr)
 library(ggrepel)
 library(broom)
+library(stringr)
 ```
 
 
@@ -239,5 +240,53 @@ final_join[is.na(final_join)] <- 0
 list1 <- final_join %>%
   group_by(Cancer.Types) %>%
   summarize(n = n())
+
+constraints_ds <- read_csv("Data/constraints_ds.csv")
+
+constraints_ds <- constraints_ds %>%
+  mutate(Tissue = ifelse(cancer.type == "Biliary-AdenoCA", "CHOL", 
+                         ifelse(cancer.type == "Bladder-TCC", "BLCA",
+                         ifelse(cancer.type == "Breast", "BRCA",
+                         ifelse(cancer.type == "Cervix", "CESC",
+                         ifelse(cancer.type == "CNS-GBM", "GBM",
+                         ifelse(cancer.type == "ColoRect-AdenoCA", "COAD",
+                         ifelse(cancer.type == "Eso-AdenoCA", "ESCA",
+                         ifelse(cancer.type == "Eye-Melanoma", "UVM",
+                         ifelse(cancer.type == "Head-SCC", "HNSC",
+                         ifelse(cancer.type == "Kidney-ChRCC", "KICH",
+                         ifelse(cancer.type == "Kidney-Papillary", "KIRP",
+                         ifelse(cancer.type == "Kidney-RCC", "KIRC", 
+                         ifelse(cancer.type == "Liver-HCC", "LIHC", 
+                         ifelse(cancer.type == "Lung-AdenoCA", "LUAD", 
+                         ifelse(cancer.type == "Lung-SCC", "LUSC", 
+                         ifelse(cancer.type == "Lymph-BNHL", "DLBC", 
+                         ifelse(cancer.type == "Myeloid-AML", "LAML", 
+                         ifelse(cancer.type == "Ovary-AdenoCA", "OV",
+                         ifelse(cancer.type == "Panc-AdenoCA", "PAAD",
+                         ifelse(cancer.type == "Prost-AdenoCA", "PRAD",
+                         ifelse(cancer.type == "Sarcoma", "SARC", 
+                         ifelse(cancer.type == "Skin-Melanoma", "SKCM", 
+                         ifelse(cancer.type == "Stomach-AdenoCA", "STAD",
+                         ifelse(cancer.type == "Thy-AdenoCA", "THCA",
+                         ifelse(cancer.type == "Uterus-AdenoCA", "UCS", cancer.type)))))))))))))))))))))))))) %>%
+  rename(signature = "Signature",
+         scale = "Scale",
+         quantile = "Value")
+
+constraints_ds <- constraints_ds %>%
+  select("Quantile", "Signature", "Scale", "Value", "Tissue")
+
+comparison_list <- c("CHOL", "BLCA", "BRCA", "CESC", "GBM", "COAD", "ESCA", "UVM", "HNSC", "KICH", "KIRP", "KIRC", "LIHC", "LUAD", "LUSC", "DLBC", "LAML", "OV", "PAAD", "PRAD", "SARC", "SKCM", "STAD", "THCA", "UCS")
+
+comparison_list <- as.data.frame(comparison_list)
+
+constraints_ds <- left_join(comparison_list, constraints_ds, by = c("comparison_list" = "Tissue"))
+
+constraints_ds <- constraints_ds %>%
+  rename(comparison_list = "Tissue")
+
+write.csv(constraints_ds, "Data/constraints_ds.csv", row.names=FALSE)
 ```
+
+
 
