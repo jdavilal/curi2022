@@ -285,6 +285,8 @@ constraints_ds <- left_join(comparison_list, constraints_ds, by = c("comparison_
 constraints_ds <- constraints_ds %>%
   rename(comparison_list = "Tissue")
 
+constraints_ds[is.na(constraints_ds)] <- 0
+
 write.csv(constraints_ds, "Data/constraints_ds.csv", row.names=FALSE)
 ```
 
