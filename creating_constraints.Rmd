@@ -43,33 +43,69 @@ unknown <- c("SBS10c", "SBS10d", "SBS25", "SBS48", "SBS84", "SBS85", "SBS86", "S
 sigs <- sigs[ - which(sigs %in% unknown)]
 scales <- c("genome", "exome")
 cancer.types <- unique(SBS1$Cancer.Types)
+
+exome <- SBS1 %>%
+  filter(Scale == "exome")
+
+genome <- SBS1 %>%
+  filter(Scale == "genome")
+
+exome.cancer.types <-  unique(exome$Cancer.Types)
+genome.cancer.types <-  unique(genome$Cancer.Types)
 ```
 
 ```{r}
 constraints_df <- c()
-      
+final_df <- c()
+exome_df <- c()
+genome_df <- c()  
+
 for (i in 1:length(sigs)){
   SBS_df <- get_sig_data(sigs[i])
   
   for (j in 1:length(scales)){
-    for (k in 1:length(cancer.types)){
-      
-      df <- SBS_df %>%
-        filter(Scale == scales[j], Cancer.Types == cancer.types[k])
-      
-      df <- as.matrix(df)
-      mut <- df[,ncol(df)]
-      mut <- as.numeric(unlist(mut))/50
-      
-      signature <- sigs[i]
-      scale <- scales[j]
-      cancer.type <- cancer.types[k]
-      quantile <- quantile(mut, probs = seq(0.05, 0.95, 0.05))
-      
-      df <- cbind(signature, scale, cancer.type, quantile)
-      constraints_df <- rbind(constraints_df, df)
+    if (scales[j] == "exome"){
+        for (k in 1:length(cancer.types)){
+        
+          df <- SBS_df %>%
+            filter(Scale == scales[j], Cancer.Types == cancer.types[k])
+          
+          df <- as.matrix(df)
+          mut <- df[,ncol(df)]
+          mut <- as.numeric(unlist(mut))/50
+          
+          signature <- sigs[i]
+          scale <- scales[j]
+          cancer.type <- cancer.types[k]
+          quantile <- quantile(mut, probs = seq(0.05, 0.95, 0.05))
+          
+          df <- cbind(signature, scale, cancer.type, quantile)
+          exome_df <- rbind(exome_df, df)
+      }
+    }
+    
+    else if (scales[j] == "genome") {
+        for (k in 1:length(cancer.types)){
+        
+          df <- SBS_df %>%
+            filter(Scale == scales[j], Cancer.Types == cancer.types[k])
+          
+          df <- as.matrix(df)
+          mut <- df[,ncol(df)]
+          mut <- as.numeric(unlist(mut))/3000
+          
+          signature <- sigs[i]
+          scale <- scales[j]
+          cancer.type <- cancer.types[k]
+          quantile <- quantile(mut, probs = seq(0.05, 0.95, 0.05))
+          
+          df <- cbind(signature, scale, cancer.type, quantile)
+          genome_df <- rbind(genome_df, df)
+      }
     }
   }
+  final_df <- rbind(exome_df, genome_df)
+  constraints_df <- rbind(constraints_df, final_df)
 }
 ```
 
@@ -77,6 +113,9 @@ for (i in 1:length(sigs)){
 constraints_df <- cbind(Quantile = rownames(constraints_df), constraints_df)
 rownames(constraints_df) <- seq(1, dim(constraints_df)[1])
 constraints_df <- as.data.frame(constraints_df)
+
+constraints_df <- constraints_df %>%
+  drop_na(quantile)
 
 write.csv(constraints_df, "Data/constraints_ds.csv", row.names=FALSE)
 ```
