@@ -674,6 +674,72 @@ generate_sample_prof <- function(sigs, nums){
 }
 ```
 
+new2
+```{r, message=FALSE, warning=FALSE}
+#sigs = the array of the signatures that we want to put 
+#nums = the number of mutations that we want to generate for each signature
+
+generate_sample_prof <- function(sigs, nums){
+
+  #sigs <- c("SBS10a","SBS10b","SBS10c","SBS6")
+  #nums <- c(100,100,100,700)
+  
+  cosmic.signatures <- get_known_signatures()
+  sig <- cosmic.signatures[,sigs]
+  
+  #load the mutation order
+  mut.selected <- sample.info %>%
+    select (sample) %>%
+    inner_join (signatures)
+  
+  mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
+  mutational.signature <-  mut.selected
+  mut_mat <-  read_csv(mut.order)
+  
+  mut.join <-  mutational.signature %>%
+    inner_join(mut_mat)
+  order.tri <-  unique(mut.join$ext.context)
+  
+  rownames(sig) <- order.tri
+  mut_order <- as_tibble(order.tri)
+  
+  
+  df_a <- c()
+  #generate from the first signature to the last signatures and merge with the first signature
+  for (i in 1:length(sigs)){
+    b <- sample(rownames(sig), size = nums[i], replace = TRUE, prob = sig[,i])
+    df_b <- as_tibble(b)
+    df_b <- df_b %>%
+      count(value) %>%
+      mutate(
+        value = factor(value, levels = order.tri),
+      ) %>%
+      merge(mut_order, all = TRUE)
+    
+    df_b[is.na(df_b)] <- 0     # Replace NA with 0
+    df_b <- df_b %>%
+      select(-value)
+    
+    #rownames(df_b) <- order.tri
+    df_b <- as.matrix(df_b)
+    
+    df_a <- cbind(df_a, df_b)
+  }
+  
+  df_a <- rowSums(df_a)
+  df_a <- as_tibble(df_a)
+  colnames(df_a) <- c("mut")
+
+  sample_profile <- df_a %>%
+    mutate(
+      prob = mut/sum(mut)
+    )
+  sample_profile <- as.matrix(sample_profile)
+  rownames(sample_profile) <- order.tri
+  
+  sample_profile
+}
+```
 
 This function is plotting the sample mutational profile based on the selected signatures and the number of mutations that we want to generate for each signature.
 ```{r, message=FALSE, warning=FALSE}
@@ -681,7 +747,8 @@ This function is plotting the sample mutational profile based on the selected si
 #nums = the number of mutations that we want to generate for each signature
 
 plot_sample_prof <- function(sample_profile){
-  sample_profile <- sample_profile[,1]
+  
+  sample_profile <- sample_profile[,2]
   sample_profile <- as.matrix(sample_profile)
   colnames(sample_profile) <- c("prob")
   
@@ -764,13 +831,13 @@ new
 estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
   
   #parameters testing
-  #sample_profile <- generate_sample_prof(c("SBS1","SBS10c","SBS6"),c(100,300,600))
-  sums <- colSums(sample_profile)
-  total_mut <- unname(sums["mut"])
-  sample_profile <- as.matrix(sample_profile[,1])
+  #sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(100,300,600))
+  total_mut <- unname(colSums(sample_profile)[1])
+  
+  sample_profile <- as.matrix(sample_profile[,2])
   colnames(sample_profile) <- c("prob")
   
-  #sigs <- c("SBS1","SBS10c","SBS6")
+  #sigs <- c("SBS1","SBS10b","SBS6")
   #tissue_type <- "BRCA"
   #scale <- "exome"
   #quantiles <- c("5%","95%")
@@ -828,7 +895,7 @@ estimate_coeff(sample_profile, sigs = c("SBS10a","SBS6"), tissue_type = "BRCA", 
 #3 sigs
 sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(200,300,500))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
 
 
 brca <- constraints_ds %>%
@@ -850,10 +917,10 @@ estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2")
 These are the signatures that the constraints are unknown in the COSMIC website.
 If we want to include the signatures below, we might need to use the function that the constraints can be set manually.
 Also the old version of generate_sample_prof needs to be used here.
-```{r}
+```{r, eval=FALSE}
 unknown <- c("SBS10c", "SBS10d", "SBS25", "SBS48", "SBS84", "SBS85", "SBS86", "SBS87", "SBS88", "SBS89", "SBS90", "SBS91", "SBS92", "SBS93", "SBS94")
 ```
-```{r}
+```{r, eval=FALSE}
 sample_profile <- generate_sample_prof(c("SBS10c","SBS10d","SBS1","SBS6"),c(300,100,200,400))
 plot_sample_prof(sample_profile)
 #estimate_coeff(sample_profile, sigs = c("SBS10c","SBS10d","SBS1","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
