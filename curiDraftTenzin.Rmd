@@ -22,10 +22,7 @@ library(glmc)
 library(ConsReg)
 ```
 
-```{r}
-install.packages("glmc")
-install.packages("emplik")
-```
+
 
 ## Preliminary functions
 
@@ -35,7 +32,7 @@ The following functions allow us to load and analyze mutational signatures
 # Loads a mutational signature matrix from a mutational signature txt file
 load_old_mutational_matrix<- 
   function(filename,
-          mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
+          mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
   mutational.signature <-  read_csv(filename)
   mut_mat <-  read_csv(mut.order)
 
@@ -58,7 +55,7 @@ load_old_mutational_matrix<-
 
 change_old_mutational_matrix<-
     function(sig.frame,
-             mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
+             mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
         
   mutational.signature <-  sig.frame
   mut_mat <-  read_csv(mut.order)
@@ -82,7 +79,7 @@ change_old_mutational_matrix<-
     return (t(mut.matrix))
 }
 
-load_cosmic_matrix<- function(mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
+load_cosmic_matrix<- function(mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
 
   sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
                 "signatures_probabilities.txt", sep = "")
@@ -164,12 +161,12 @@ We load the mutational signatures file for all of the samples and consider only
 samples that have high sequencing coverage (over 5Mb at 20x)
 ```{r}
 # Load mutational signature data for all samples
-signatures <- read_csv("mutational_sig_oec/supplied_data/mutational.sig.csv")
+signatures <- read_csv("mutational_sig_oec-main/supplied_data/mutational.sig.csv")
 
 # Load sequencing/cohort info for samples, filter with at
 # at least 5 million Mb covered
 sample.info <-
-    read_csv("mutational_sig_oec/supplied_data/sample.info.csv") %>%
+    read_csv("mutational_sig_oec-main/supplied_data/sample.info.csv") %>%
     filter (area.cov > 5e6)
 ```
 
@@ -215,7 +212,7 @@ mut.selected <- sample.info %>%
   select (sample) %>%
   inner_join (signatures)
 
-mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
+mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -276,7 +273,7 @@ sample_profile
 ## Function for generating the sample mutation profiles
 Load the Mutation signatures order
 ```{r}
-mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
+mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -302,7 +299,7 @@ generate_sample_prof <- function(A, B, n){
     select (sample) %>%
     inner_join (signatures)
   
-  mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
+  mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -361,6 +358,59 @@ mut_order <- as_tibble(order.tri)
   sample_profile
 }
 ```
+
+
+```{r}
+generate_sample_prof_1 <- function(A, B, n1, n2){
+  cosmic.signatures <- load_cosmic_matrix()
+  sig <- cosmic.signatures[,c(A, B)]
+  sig.labels <-  c("A","B")
+  colnames(sig) <- sig.labels
+  
+  #generate random mutation samples of Signature 10
+  a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
+  df_a <- as_tibble(a)
+  df_a <- df_a %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n),
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_a[is.na(df_a)] <- 0     # Replace NA with 0
+  
+  #generate random mutation samples of Signature 6
+  b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
+  df_b <- as_tibble(b)
+  df_b <- df_b %>%
+    count(value) %>%
+    mutate(
+      value = factor(value, levels = order.tri),
+      prob = n/sum(n)
+    ) %>%
+    merge(mut_order, all = TRUE)
+  
+  df_b[is.na(df_b)] <- 0     # Replace NA with 0
+  
+  #join those two sample mutations
+  mut_df <- df_a %>%
+    inner_join(df_b, by = "value") %>%
+    mutate(
+      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
+    ) %>%
+    select(value, prob)
+  
+  #define the sample profile created by two sample mutations
+  sample_profile <- mut_df %>%
+    select(prob)
+  sample_profile <- as.matrix(sample_profile)
+  
+  sample_profile
+}
+```
+
+
 
 ```{r}
 #A, B = Signatures.A, Signatures.B
@@ -614,6 +664,7 @@ coeff$value
 ```{r}
 sample_profile <- generate_sample_prof(1, 6, 200, 800)
 ```
+
 ```{r}
 lm_test_2 <- function(sample_profile, sigA, sigB, a1, a2, b1, b2){
   cosmic.signatures <- get_known_signatures()
@@ -663,3 +714,340 @@ lm_test_2 <- function(sample_profile, sigA, sigB, a1, a2, b1, b2){
 
 lm_test_2(sample_profile,"SBS10a","SBS6", 0.1, 1, 0.1, 1)
 ```
+
+
+```{r}
+lm_test <- function(sample_profile, sigs, constrs){
+  
+  cosmic.signatures <- get_known_signatures()
+  sig <- cosmic.signatures[,sigs]
+  
+  df <- cbind(sample_profile,sig)
+  df <- as_tibble(df)
+  total_mut <- 1500
+  total_size <- 50
+  
+  constraints <- str_c(constrs[1], ' < ', ((sigs[1]*total_mut)/total_size), ', ', ((sigs[1]*total_mut)/total_size), ' < ', constrs[2])
+  for (i in 2:length(sigs)){
+    constraint <- str_c(constrs[2*i-1], ' < ', ((sigs[i]*total_mut)/total_size), ', ', ((sigs[i]*total_mut)/total_size), ' < ', constrs[2*i])
+    constraints <- str_c(constraints, ', ', constraint)
+  }
+  
+  model<- ConsReg(formula = prob ~ 0 + ., data = df,
+            family = 'gaussian',
+            constraints = constraints
+            )
+  
+  model$coefficients
+  coeff <- as.tibble(model$coefficients)
+  coeff$value
+}
+```
+
+
+```{r}
+sample_profile <- generate_sample_prof(10,6,4000,6000)
+lm_test(sample_profile,10,6)
+```
+
+
+```{r}
+constraints_ds <- read.csv("~/Desktop/curi2022/Data/constraints_ds.csv")
+```
+
+
+
+
+```{r}
+estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
+  
+  #parameters testing
+  #sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(100,300,600))
+  total_mut <- unname(colSums(sample_profile)[1])
+  
+  sample_profile <- as.matrix(sample_profile[,2])
+  colnames(sample_profile) <- c("prob")
+  
+  #sigs <- c("SBS1","SBS10b","SBS6")
+  #tissue_type <- "BRCA"
+  #scale <- "exome"
+  #quantiles <- c("5%","95%")
+  #mb_size <- 50
+  
+  #pulling constraints
+  constraints_ds <- read_csv("~/Desktop/curi2022/Data/constraints_ds.csv")
+  constr1 <- constraints_ds %>%
+    filter(Tissue == tissue_type, Signature %in% sigs, Scale == scale, Quantile %in% quantiles) 
+  constrs <- c(constr1$Value)
+  
+  #making dataset for the model
+  cosmic.signatures <- get_known_signatures()
+  sig <- cosmic.signatures[,sigs]
+  
+  df <- cbind(sample_profile,sig)
+  df <- as_tibble(df)
+  
+  constraints <- str_c(constrs[1]*(mb_size/total_mut), ' < ', sigs[1], ', ', sigs[1], ' < ', constrs[2]*(mb_size/total_mut))
+  for (i in 2:length(sigs)){
+    constraint <- str_c(constrs[2*i-1]*(mb_size/total_mut), ' < ', sigs[i], ', ', sigs[i], ' < ', constrs[2*i]*(mb_size/total_mut))
+    constraints <- str_c(constraints, ', ', constraint)
+  }
+  
+  model<- ConsReg(formula = prob ~ 0 + ., data = df,
+            family = 'gaussian',
+            constraints = constraints
+            )
+  
+  model$coefficients
+  #coeff <- as.tibble(model$coefficients)
+  #coeff$value
+}
+```
+
+
+```{r}
+sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"),c(200,300,100,300,100))
+plot_sample_prof(sample_profile)
+estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6"),c(300,100,200,400))
+plot_sample_prof(sample_profile)
+estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+```
+
+For colorectal cancer
+
+```{r}
+
+```
+
+
+```{r}
+constraints_ds %>%
+  count(Tissue)
+
+
+sample_profile <- generate_sample_prof(c("SBS1","SBS6"),c(400,600))
+plot_sample_prof(sample_profile)
+estimate_coeff(sample_profile, sigs = c("SBS1","SBS6"), tissue_type = "CHOL", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)  
+```
+
+```{r}
+#loading in COSMIC sample data
+COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
+
+#getting just colorectal cancer samples
+colo_samples <- COSMICsample_ds %>%
+  filter(Cancer.Types == "ColoRect-AdenoCA")
+read(colo_samples)
+
+#creating sample SP18310
+sample_prof <- generate_sample_prof(c("SBS1","SBS5","SBS44"),c(33221,25724,49282))
+test1 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5","SBS44"), tissue_type = "COAD", scale = "genome", quantiles = c("5%", "95%"), mb_size = 3000)
+
+
+#creating sample SP17172
+sample_prof <- generate_sample_prof(c("SBS1","SBS5","SBS44"),c(31717,46279,46366))
+test2 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5","SBS44"), tissue_type = "COAD", scale = "genome", quantiles = c("5%", "95%"), mb_size = 3000)
+
+actual <- c(test1[1], test1[2], test1[3], test2[1], test2[2], test2[3])
+expected <- c(33221, 25724, 49282, 31717,46279,46366)
+data.frame(actual, expected)
+
+```
+
+```{r}
+
+#828, sample number TCGA-AA-3549-01A-02D-1953-10
+sample_prof <- generate_sample_prof(c("SBS15"),c(13))
+proptable828 <- prop.table(c(13))
+test828 <- estimate_coeff(sample_prof, sigs = c("SBS15"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+#error
+
+
+#827, sample number HT115
+sample_prof <- generate_sample_prof(c("SBS5","SBS10a","SBS10b", "SBS15","SBS28"),c(1064,1077,2226,1231,474))
+proptable827 <- prop.table(c(1064,1077,2226,1231,474))
+test827 <- estimate_coeff(sample_prof, sigs = c("SBS5","SBS10a","SBS10b", "SBS15","SBS28"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#826, sample number VACO10
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(63,129))
+proptable826 <- prop.table(c(63,129))
+test826 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#825, sample number T96
+sample_prof <- generate_sample_prof(c("SBS1","SBS5","SBS10b"),c(186,86,94))
+proptable825 <- prop.table(c(186,86,94))
+test825 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5","SBS10b"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#824, sample number T70
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(39,44))
+proptable824 <- prop.table(c(39,44))
+test824 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#823, sample number T684
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(49,60))
+proptable823 <- prop.table(c(49,60))
+test823 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#822, sample number T660
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(39,63))
+proptable822 <- prop.table(c(39,63))
+test822 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#821, sample number T636
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(123,135))
+proptable821 <- prop.table(c(123,135))
+test821 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#820, sample number T613
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(215,207))
+proptable820 <- prop.table(c(215,207))
+test820 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#819, sample number T595
+sample_prof <- generate_sample_prof(c("SBS1"),c(34))
+proptable819 <- prop.table(c(34))
+test819 <- estimate_coeff(sample_prof, sigs = c("SBS1"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+#error
+
+
+#818, sample number T578
+sample_prof <- generate_sample_prof(c("SBS1","SBS5", "SBS10a","SBS10b","SBS28"),c(343,383,1663,	1447,546))
+proptable818 <- prop.table(c(343,383,1663,1447,546))
+test818 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5", "SBS10a","SBS10b","SBS28"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#817, sample number T55
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(76,384))
+proptable817 <- prop.table(c(76,384))
+test817 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5", "SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#816, sample number T521
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(38,45))
+proptable816 <- prop.table(c(38,45))
+test816 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#815, sample number T475
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(39,43))
+proptable815 <- prop.table(c(39,43))
+test815 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#814, sample number T473
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(27,32))
+proptable814 <- prop.table(c(27,32))
+test814 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#813, sample number T469
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(130,85))
+proptable813 <- prop.table(c(130,85))
+test813 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#812, sample number T464
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(29,17))
+proptable812 <- prop.table(c(29,17))
+test812 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#811, sample number T407
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(	204,157))
+proptable811 <- prop.table(c(204,157))
+test811 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#810, sample number T388
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(20,24))
+proptable810 <- prop.table(c(20,24))
+test810 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#809, sample number T3724
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(432,830))
+proptable809 <- prop.table(c(432,830))
+test809 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#808, sample number T3720
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(49,61))
+proptable808 <- prop.table(c(49,61))
+test808 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#807, sample number T368
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(306,322))
+proptable807 <- prop.table(c(306,322))
+test807 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#806, sample number T3670
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(72,91))
+proptable806 <- prop.table(c(72,91))
+test806 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#805, sample number T3668
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(77,91))
+proptable805 <- prop.table(c(77,91))
+test805 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#804, sample number T3658
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(295,433))
+proptable804 <- prop.table(c(295,433))
+test804 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#803, sample number T3610
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(196,71))
+proptable803 <- prop.table(c(196,71))
+test803 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#802, sample number T3603
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(62,43))
+proptable802 <- prop.table(c(62,43))
+test802 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+#801, sample number T36
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(84,128))
+proptable801 <- prop.table(c(84,128))
+test801 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#800, sample number T3557
+sample_prof <- generate_sample_prof(c("SBS1","SBS5"),c(51,54))
+proptable800 <- prop.table(c(51,54))
+test800 <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+
+actual <- c(test826[1], test826[2], test825[1],test825[2],test825[3], test824[1],test824[2],test823[1],test823[2],test822[1],test822[2],test821[1],test821[2],test820[1],test820[2],test818[1],test818[2],test818[3],test818[4],test818[5],test817[1],test817[2],test816[1],test816[2],test815[1],test815[2],test814[1],test814[2],test813[1],test813[2],test812[1],test812[2],test811[1],test811[2],test810[1],test810[2],test809[1],test809[2],test808[1],test808[2],test807[1],test807[2],test806[1],test806[2],test805[1],test805[2],test804[1],test804[2],test803[1],test803[2],test802[1],test802[2],test801[1],test801[2],test800[1],test800[2])
+
+
+expected<-c( proptable826,proptable825,proptable824,proptable823,proptable822,proptable821,proptable820,proptable818,proptable817,proptable816,proptable815,proptable814,proptable813,proptable812,proptable811,proptable810,proptable809,proptable808,proptable807,proptable806,proptable805,proptable804,proptable803,proptable802,proptable801,proptable800 )
+
+graph<-data.frame(actual,expected)
+
+
+
+```
+
+
+```{r}
+one<-colo_samples %>%
+  filter(Sample.Names == "T3557")
+view(one)
+```
+
+
+```{r}
+#Tenzin's test
+#ignore
+view(colo_samples)
+for (i in generate_sample_prof(c())){
+  sample_prof <- generate_sample_prof(c("SBS1","SBS5","SBS44"),c(31717,46279,46366))
+}
+```
+
