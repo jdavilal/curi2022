@@ -17,9 +17,9 @@ library(gridExtra)
 library(ggpubr)
 library(ggrepel)
 library(broom)
-library(emplik)
-library(glmc)
+library(Hmisc)
 library(ConsReg)
+
 ```
 
 
@@ -1036,9 +1036,28 @@ graph<-data.frame(actual,expected)
 
 
 ```{r}
-one<-colo_samples %>%
-  filter(Sample.Names == "T3557")
-view(one)
+
+
+coloE_samples <- COSMICsample_ds %>%
+  filter(Cancer.Types == "ColoRect-AdenoCA") %>%
+  filter(Scale == "exome")
+
+mut_list <- coloE_samples %>%
+  select(6:68)
+coloE_samples <- coloE_samples %>%
+  select(3, 6:68) 
+coloE_size <- dim(coloE_samples)[1]
+
+mut <- as.numeric(colo_samples[1,])
+nonzero_sig <- (which(mut %nin% c(0, NA)))-1
+list <- colnames(mut_list)
+sig_list <- list[nonzero_sig]
+sig_list <- str_remove(sig_list, ".Mutations")
+mut_list <- mut[mut %nin% c(0, NA)]
+
+sig_list
+mut_list
+
 ```
 
 
