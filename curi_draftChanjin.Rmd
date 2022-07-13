@@ -20,6 +20,8 @@ library(broom)
 library(emplik)
 library(glmc)
 library(ConsReg)
+library(Hmisc)
+library(yardstick)
 ```
 
 ## Preliminary functions
@@ -536,10 +538,12 @@ generate_sample_prof_2 <- function(A, B, n1, n2){
 COSMIC Version 3 (new version) with multiple signatures
 
 old
-```{r, message=FALSE, warning=FALSE}
+```{r, eval=FALSE, message=FALSE, warning=FALSE}
 #sigs = the array of the signatures that we want to put 
 #nums = the number of mutations that we want to generate for each signature
+
 generate_sample_prof <- function(sigs, nums){
+
   #sigs <- c("SBS10a","SBS10b","SBS10c","SBS6")
   #nums <- c(100,100,100,700)
   
@@ -594,9 +598,9 @@ generate_sample_prof <- function(sigs, nums){
   }
   
   prob <- rowSums(prob)
-  sample_profile <- as.matrix(prob)
-  
-  colnames(sample_profile) <- c("prob")
+  mut <- rowSums(df_a[,seq(1, length(sigs)*2-1, 2)])
+
+  sample_profile <- as.matrix(cbind(mut, prob))
   sample_profile
 }
 ```
@@ -627,82 +631,13 @@ generate_sample_prof <- function(sigs, nums){
     inner_join(mut_mat)
   order.tri <-  unique(mut.join$ext.context)
   
-  rownames(sig) <- order.tri
-  mut_order <- as_tibble(order.tri)
-  
-  
-  df_a <- c()
-  #generate from the first signature to the last signatures and merge with the first signature
-  for (i in 1:length(sigs)){
-    b <- sample(rownames(sig), size = nums[i], replace = TRUE, prob = sig[,i])
-    df_b <- as_tibble(b)
-    df_b <- df_b %>%
-      count(value) %>%
-      mutate(
-        value = factor(value, levels = order.tri),
-        prob = n/sum(n),
-      ) %>%
-      merge(mut_order, all = TRUE)
-    
-    df_b[is.na(df_b)] <- 0     # Replace NA with 0
-    df_b <- df_b %>%
-      select(-value)
-    
-    rownames(df_b) <- order.tri
-    df_b <- as.matrix(df_b)
-    
-    df_a <- cbind(df_a, df_b)
+  if(length(sigs) == 1){
+    names(sig) <- order.tri
+    sig <- as.matrix(sig)
+  } else{
+    rownames(sig) <- order.tri
+    mut_order <- as_tibble(order.tri)
   }
-  
-  #multiply with the assigned proportion of the number 
-  prob <- c()
-  mut <- c()
-  
-  for(i in seq(2,length(sigs)*2,2)){
-    p = df_a[,i]*(nums[i/2]/sum(nums))
-    prob <- cbind(prob, p)
-    
-    n = df_a[,i-1]*(nums[i/2]/sum(nums))
-    mut <- cbind(mut, n)
-  }
-  
-  prob <- rowSums(prob)
-  mut <- rowSums(mut)
-  sample_profile <- as.matrix(cbind(prob, mut))
-  
-  sample_profile
-}
-```
-
-new2
-```{r, message=FALSE, warning=FALSE}
-#sigs = the array of the signatures that we want to put 
-#nums = the number of mutations that we want to generate for each signature
-
-generate_sample_prof <- function(sigs, nums){
-
-  #sigs <- c("SBS10a","SBS10b","SBS10c","SBS6")
-  #nums <- c(100,100,100,700)
-  
-  cosmic.signatures <- get_known_signatures()
-  sig <- cosmic.signatures[,sigs]
-  
-  #load the mutation order
-  mut.selected <- sample.info %>%
-    select (sample) %>%
-    inner_join (signatures)
-  
-  mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
-  mutational.signature <-  mut.selected
-  mut_mat <-  read_csv(mut.order)
-  
-  mut.join <-  mutational.signature %>%
-    inner_join(mut_mat)
-  order.tri <-  unique(mut.join$ext.context)
-  
-  rownames(sig) <- order.tri
-  mut_order <- as_tibble(order.tri)
-  
   
   df_a <- c()
   #generate from the first signature to the last signatures and merge with the first signature
@@ -826,6 +761,7 @@ lm_test <- function(sample_profile, sigs, constrs){
 }
 ```
 
+
 new
 ```{r}
 estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
@@ -837,11 +773,11 @@ estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, 
   sample_profile <- as.matrix(sample_profile[,2])
   colnames(sample_profile) <- c("prob")
   
-  #sigs <- c("SBS1","SBS10b","SBS6")
-  #tissue_type <- "BRCA"
-  #scale <- "exome"
-  #quantiles <- c("5%","95%")
-  #mb_size <- 50
+  # sigs <- c("SBS1","SBS10b","SBS6")
+  # tissue_type <- "BRCA"
+  # scale <- "exome"
+  # quantiles <- c("5%","95%")
+  # mb_size <- 50
   
   #pulling constraints
   constraints_ds <- read_csv("Data/constraints_ds.csv")
@@ -854,12 +790,19 @@ estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, 
   sig <- cosmic.signatures[,sigs]
   
   df <- cbind(sample_profile,sig)
+  if(length(sigs) == 1){
+    colnames(df) <- c("prob", sigs)
+  }
   df <- as_tibble(df)
   
-  constraints <- str_c(constrs[1]*(mb_size/total_mut), ' < ', sigs[1], ', ', sigs[1], ' < ', constrs[2]*(mb_size/total_mut))
-  for (i in 2:length(sigs)){
-    constraint <- str_c(constrs[2*i-1]*(mb_size/total_mut), ' < ', sigs[i], ', ', sigs[i], ' < ', constrs[2*i]*(mb_size/total_mut))
-    constraints <- str_c(constraints, ', ', constraint)
+  if(length(sigs) == 1){
+    constraints <- str_c(constrs[1]*(mb_size/total_mut), ' < ', sigs[1], ', ', sigs[1], ' < ', constrs[2]*(mb_size/total_mut))
+  } else{
+        constraints <- str_c(constrs[1]*(mb_size/total_mut), ' < ', sigs[1], ', ', sigs[1], ' < ', constrs[2]*(mb_size/total_mut))
+    for (i in 2:length(sigs)){
+      constraint <- str_c(constrs[2*i-1]*(mb_size/total_mut), ' < ', sigs[i], ', ', sigs[i], ' < ', constrs[2*i]*(mb_size/total_mut))
+      constraints <- str_c(constraints, ', ', constraint)
+    }
   }
   
   model<- ConsReg(formula = prob ~ 0 + ., data = df,
@@ -873,6 +816,7 @@ estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, 
 }
 ```
 
+
 Function testing code
 ```{r}
 #A, B = Signatures.A, Signatures.B
@@ -884,7 +828,6 @@ sample_profile <- generate_sample_prof_1(10,6,4000,6000)
 lm_test_1(sample_profile,10,6)
 
 sample_profile1 <- generate_sample_prof_2("SBS10a","SBS6", 2000, 8000)
-plot_sample_prof(sample_profile1)
 lm_test(sample_profile1,c("SBS10a","SBS6"), c(0.1, 1, 0.1, 1))
 
 #2 sigs
@@ -897,7 +840,7 @@ sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(200,300,500))
 plot_sample_prof(sample_profile)
 estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
 
-
+constraints_ds <- read_csv("Data/constraints_ds.csv")
 brca <- constraints_ds %>%
   filter(Tissue == "BRCA") 
 unique(brca$Signature)
@@ -917,13 +860,93 @@ estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2")
 These are the signatures that the constraints are unknown in the COSMIC website.
 If we want to include the signatures below, we might need to use the function that the constraints can be set manually.
 Also the old version of generate_sample_prof needs to be used here.
-```{r, eval=FALSE}
-unknown <- c("SBS10c", "SBS10d", "SBS25", "SBS48", "SBS84", "SBS85", "SBS86", "SBS87", "SBS88", "SBS89", "SBS90", "SBS91", "SBS92", "SBS93", "SBS94")
+
+
+## Comparing the method with fit_to_signature
+```{r}
+COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
+cosmic.signatures <- get_known_signatures()
+tissue_list <- unique(COSMICsample_ds$Cancer.Types)
 ```
+
 ```{r, eval=FALSE}
-sample_profile <- generate_sample_prof(c("SBS10c","SBS10d","SBS1","SBS6"),c(300,100,200,400))
-plot_sample_prof(sample_profile)
-#estimate_coeff(sample_profile, sigs = c("SBS10c","SBS10d","SBS1","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
-lm_test(sample_profile, sigs = c("SBS10c","SBS10d","SBS1","SBS6"), constrs = c(0.1, 1, 0.1, 1, 0.1, 1, 0.1, 1))
+COSMICsample <- COSMICsample_ds %>%
+  select(6:64) 
+signature_list <- colnames(COSMICsample)
+signature_list <- str_remove(signature_list, ".Mutations")
+cosmic_signature_list <- colnames(cosmic.signatures)
+
+known_sig <- signature_list[signature_list %in% cosmic_signature_list]
+```
+
+ColoRect exome (It takes about 10 mins)
+```{r}
+coloE_samples <- COSMICsample_ds %>%
+  filter(Cancer.Types == "ColoRect-AdenoCA") %>%
+  filter(Scale == "exome")
+
+coloE_samples <- coloE_samples %>%
+  select(6:64) 
+coloE_size <- dim(coloE_samples)[1]
+
+mse_list <- c()
+for (i in 1:coloE_size){
+  mut <- as.numeric(coloE_samples[i,])
+  nonzero_sig <- (which(mut %nin% c(0, NA)))
+  list <- colnames(coloE_samples)
+  s_list <- list[nonzero_sig]
+  s_list <- str_remove(s_list, ".Mutations")
+  m_list <- mut[mut %nin% c(0, NA)]
+  
+  s_list <- s_list[s_list %in% known_sig]
+  m_list <- m_list[s_list %in% known_sig]
+  
+  sample_prof <- generate_sample_prof(s_list, m_list)
+  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+  
+  #Test with simulated sample profile
+  if(length(s_list) == 1){
+    cosmic_1sig <- as.matrix(cosmic.signatures[,s_list])
+    colnames(cosmic_1sig) <- s_list
+    
+    fit_test <- fit_to_signatures_strict(sample_prof, cosmic_1sig, max_delta = 0.002)
+    fit_test <- fit_test$fit_res$contribution
+    fit_test <- fit_test[,2]
+  } else{
+      fit_test <- fit_to_signatures_strict(sample_prof, cosmic.signatures[,s_list], max_delta = 0.002)
+    fit_test <- fit_test$fit_res$contribution
+    fit_test <- fit_test[,2]
+  }
+  
+  df <- cbind(fit_test, method_test)
+  df <- as_tibble(df)
+  mse <- rmse_vec(df$fit_test, df$method_test)^2
+  mse_list <- append(mse_list, mse)
+}
+mse_list
+```
+
+Plot for MSE between fit_to_signature and our method
+```{r}
+samples <- seq(1, coloE_size)
+eval_df <- data_frame(samples, mse_list)
+eval_df %>%
+  ggplot(aes(x = samples, y = mse_list)) +
+    geom_point() +
+    labs(x = "samples", y = "MSE", title = "MSE between fit_to_signature and our method")
+```
+
+
+one exome example
+```{r}
+sample_prof <- generate_sample_prof(c("SBS1","SBS5","SBS40"),c(50,20,45))
+method_test <- estimate_coeff(sample_prof, sigs = c("SBS1","SBS5","SBS40"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+
+#Test with simulated sample profile
+#fit_to_signatures(sample_prof, signatures)
+fit_test <- fit_to_signatures_strict(sample_prof, cosmic.signatures[,c("SBS1","SBS5","SBS40")], max_delta = 0.002)
+fit_test <- fit_test$fit_res$contribution
+
+cbind(fit_test, method_test)
 ```
 
