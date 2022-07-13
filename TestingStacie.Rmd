@@ -8,7 +8,6 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
 library(tidyverse)
 library(MutationalPatterns)
 library(NMF)
@@ -21,6 +20,8 @@ library(broom)
 library(emplik)
 library(glmc)
 library(ConsReg)
+library(Hmisc)
+library(yardstick)
 
 sample_info <- read_csv("mutational_sig_oec/supplied_data/sample.info.csv")
 ```
@@ -345,7 +346,100 @@ expected <- c(proptable1[1], proptable1[2], proptable1[3], proptable2[1], propta
 testing_data <- data.frame(actual, expected)
 
 ggplot(data = testing_data, mapping = aes(x = expected, y = actual)) +
-  geom_point()
+  geom_point() + 
+  geom_smooth()
 ```
 
+
+Loop for comparing actual and method results
+
+```{r}
+COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
+cosmic.signatures <- get_known_signatures()
+tissue_list <- unique(COSMICsample_ds$Cancer.Types)
+```
+
+
+```{r}
+coloE_samples <- COSMICsample_ds %>%
+  filter(Cancer.Types == "ColoRect-AdenoCA") %>%
+  filter(Scale == "exome")
+
+coloE_samples <- coloE_samples %>%
+  select(4,6:64) 
+coloE_size <- dim(coloE_samples)[1]
+
+actual_list <- c()
+expected_list <- c()
+sample_names <- c()
+for (i in 1:coloE_size){
+  mut <- as.numeric(coloE_samples[i,])
+  nonzero_sig <- (which(mut %nin% c(0, NA)))-1
+  coloE_samples_noname <- coloE_samples %>%
+    select(2:60)
+  list <- colnames(coloE_samples_noname)
+  s_list <- list[nonzero_sig]
+  s_list <- str_remove(s_list, ".Mutations")
+  m_list <- mut[mut %nin% c(0, NA)]
+  
+  s_list <- s_list[s_list %in% known_sig]
+  m_list <- m_list[s_list %in% known_sig]
+  
+  sample_prof <- generate_sample_prof(s_list, m_list)
+  prop.test <- prop.table(m_list)
+  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+  
+  for(j in 1:length(s_list)){
+    expected <- prop.test
+    actual <- method_test
+    sample_names_list <- coloE_samples %>%
+      select(1)
+    sample_names_list <- as.matrix(sample_names_list)
+    sample_name <- sample_names_list[i]
+    sample_names <- append(sample_names, sample_name)
+  }
+  actual_list <- append(actual_list, actual)
+expected_list <- append(expected_list, expected)
+}
+
+df <- cbind(expected_list, actual_list, sample_names)
+  df <- as_tibble(df)
+  
+write.csv(df, "Data/comparision_ds.csv", row.names = FALSE)
+```
+
+testing with one sample
+```{r}
+actual_list <- c()
+expected_list <- c()
+sample_names <- c()
+
+mut <- as.numeric(coloE_samples[1,])
+  nonzero_sig <- (which(mut %nin% c(0, NA)))-1
+  coloE_samples_noname <- coloE_samples %>%
+    select(2:60)
+  list <- colnames(coloE_samples_noname)
+  s_list <- list[nonzero_sig]
+  s_list <- str_remove(s_list, ".Mutations")
+  m_list <- mut[mut %nin% c(0, NA)]
+  
+  s_list <- s_list[s_list %in% known_sig]
+  m_list <- m_list[s_list %in% known_sig]
+  
+  sample_prof <- generate_sample_prof(s_list, m_list)
+  prop.test <- prop.table(m_list)
+  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+  
+  for(j in 1:length(s_list)){
+    expected <- prop.test
+    actual <- method_test
+    sample_names_list <- coloE_samples %>%
+      select(1)
+    sample_names_list <- as.matrix(sample_names_list)
+    sample_name <- sample_names_list[1]
+    sample_names <- append(sample_names, sample_name)
+  }
+  actual_list <- append(actual_list, actual)
+expected_list <- append(expected_list, expected)
+```
 
