@@ -17,8 +17,11 @@ library(gridExtra)
 library(ggpubr)
 library(ggrepel)
 library(broom)
-library(Hmisc)
+library(emplik)
+library(glmc)
 library(ConsReg)
+library(Hmisc)
+library(yardstick)
 
 ```
 
@@ -1035,38 +1038,211 @@ graph<-data.frame(actual,expected)
 ```
 
 
+
+
+Loop for comparing actual and method results
+
 ```{r}
+COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
+cosmic.signatures <- get_known_signatures()
+tissue_list <- unique(COSMICsample_ds$Cancer.Types)
+```
 
+```{r}
+COSMICsample <- COSMICsample_ds %>%
+  select(6:64) 
+signature_list <- colnames(COSMICsample)
+signature_list <- str_remove(signature_list, ".Mutations")
+cosmic_signature_list <- colnames(cosmic.signatures)
 
+known_sig <- signature_list[signature_list %in% cosmic_signature_list]
+```
+
+```{r}
 coloE_samples <- COSMICsample_ds %>%
   filter(Cancer.Types == "ColoRect-AdenoCA") %>%
   filter(Scale == "exome")
 
-mut_list <- coloE_samples %>%
-  select(6:68)
 coloE_samples <- coloE_samples %>%
-  select(3, 6:68) 
+  select(4,6:64) 
 coloE_size <- dim(coloE_samples)[1]
 
-mut <- as.numeric(colo_samples[1,])
-nonzero_sig <- (which(mut %nin% c(0, NA)))-1
-list <- colnames(mut_list)
-sig_list <- list[nonzero_sig]
-sig_list <- str_remove(sig_list, ".Mutations")
-mut_list <- mut[mut %nin% c(0, NA)]
+actual_list <- c()
+expected_list <- c()
+sample_names <- c()
+for (i in 1:coloE_size){
+  mut <- as.numeric(coloE_samples[i,])
+  nonzero_sig <- (which(mut %nin% c(0, NA)))-1
+  coloE_samples_noname <- coloE_samples %>%
+    select(2:60)
+  list <- colnames(coloE_samples_noname)
+  s_list <- list[nonzero_sig]
+  s_list <- str_remove(s_list, ".Mutations")
+  m_list <- mut[mut %nin% c(0, NA)]
+  
+  s_list <- s_list[s_list %in% known_sig]
+  m_list <- m_list[s_list %in% known_sig]
+  
+  sample_prof <- generate_sample_prof(s_list, m_list)
+  prop.test <- prop.table(m_list)
+  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+  
+  for(j in 1:length(s_list)){
+    expected <- prop.test
+    actual <- method_test
+    sample_names_list <- coloE_samples %>%
+      select(1)
+    sample_names_list <- as.matrix(sample_names_list)
+    sample_name <- sample_names_list[i]
+    sample_names <- append(sample_names, sample_name)
+  }
+  actual_list <- append(actual_list, actual)
+expected_list <- append(expected_list, expected)
+df_1 <- cbind(actual_list, expected_list)
+  df_1 <- as_tibble(df_1)
+  mse <- rmse_vec(df_1$actual_list, df_1$expected_list)^2
+  mse_list <- append(mse_list, mse)
 
-sig_list
-mut_list
+}
+
+df <- cbind(expected_list, actual_list, sample_names)
+  df <- as_tibble(df)
+  
 
 ```
+
+
+Testing with one sample with MSE
+```{r}
+coloE_samples <- COSMICsample_ds %>%
+  filter(Cancer.Types == "ColoRect-AdenoCA") %>%
+  filter(Scale == "exome")
+
+coloE_samples <- coloE_samples %>%
+  select(4,6:64) 
+coloE_size <- dim(coloE_samples)[1]
+actual_list <- c()
+expected_list <- c()
+sample_names <- c()
+mse_list <- c()
+
+mut <- as.numeric(coloE_samples[1,])
+  nonzero_sig <- (which(mut %nin% c(0, NA)))-1
+  coloE_samples_noname <- coloE_samples %>%
+    select(2:60)
+  list <- colnames(coloE_samples_noname)
+  s_list <- list[nonzero_sig]
+  s_list <- str_remove(s_list, ".Mutations")
+  m_list <- mut[mut %nin% c(0, NA)]
+  
+  s_list <- s_list[s_list %in% known_sig]
+  m_list <- m_list[s_list %in% known_sig]
+  
+  sample_prof <- generate_sample_prof(s_list, m_list)
+  prop.test <- prop.table(m_list)
+  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+  
+  for(j in 1:length(s_list)){
+    expected <- prop.test
+    actual <- method_test
+    sample_names_list <- coloE_samples %>%
+      select(1)
+    sample_names_list <- as.matrix(sample_names_list)
+    sample_name <- sample_names_list[1]
+    sample_names <- append(sample_names, sample_name)
+  
+actual_list <- append(actual_list, actual)
+expected_list <- append(expected_list, expected)
+df_1 <- cbind(actual_list, expected_list, sample_names)
+  df_1 <- as_tibble(df_1)
+  mse <- rmse_vec(df_1$actual_list, df_1$expected_list)^2
+  mse_list <- append(mse_list, mse)
+  }
+mse_list
+```
+
 
 
 ```{r}
-#Tenzin's test
-#ignore
-view(colo_samples)
-for (i in generate_sample_prof(c())){
-  sample_prof <- generate_sample_prof(c("SBS1","SBS5","SBS44"),c(31717,46279,46366))
-}
+#Testing for all samples with mse
+
+actual_list <- c()
+expected_list <- c()
+sample_names <- c()
+
+for (i in 1:coloE_size){
+  mut <- as.numeric(coloE_samples[i,])
+  nonzero_sig <- (which(mut %nin% c(0, NA)))-1
+  coloE_samples_noname <- coloE_samples %>%
+    select(2:60)
+  list <- colnames(coloE_samples_noname)
+  s_list <- list[nonzero_sig]
+  s_list <- str_remove(s_list, ".Mutations")
+  m_list <- mut[mut %nin% c(0, NA)]
+  
+  s_list <- s_list[s_list %in% known_sig]
+  m_list <- m_list[s_list %in% known_sig]
+  
+  sample_prof <- generate_sample_prof(s_list, m_list)
+  prop.test <- prop.table(m_list)
+  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+  
+  for(j in 1:length(s_list)){
+    expected <- prop.test
+    actual <- method_test
+    sample_names_list <- coloE_samples %>%
+      select(1)
+    sample_names_list <- as.matrix(sample_names_list)
+    sample_name <- sample_names_list[i]
+    sample_names <- append(sample_names, sample_name)
+  
+actual_list <- append(actual_list, actual)
+expected_list <- append(expected_list, expected)
+df_1 <- cbind(actual_list, expected_list, sample_names)
+  df_1 <- as_tibble(df_1)
+  mse <- rmse_vec(df_1$actual_list, df_1$expected_list)^2
+  mse_list <- append(mse_list, mse)
+  }}
+mse_list
+
 ```
 
+
+Graph without mse
+
+```{r}
+#reading in comparison-ds
+
+comparison_ds <- read_csv("~/Desktop/curi2022/Data/comparison_ds.csv")
+View(comparison_ds)
+
+
+
+ggplot(data = comparision_data, mapping = aes(x = expected_list, y = actual_list))+
+   geom_point(alpha=0.3)+
+   geom_smooth()
+ 
+ 
+ 
+ 
+comparision_data %>%
+  filter(actual_list > 1)
+ 
+df_1 %>%
+  filter(sample_names == "TCGA-AA-3524-01A-02D-1953-10")
+ 
+                                
+ ggplot(data = comparision_data, mapping = aes(x = expected_list, y = actual_list))+
+   geom_point(aes(color=actual_list>0.2))+
+   geom_smooth()
+
+  
+
+ggplot(comparision_data, aes(x = expected_list, y = actual_list, label= sample_names)) +
+  geom_point(data = comparision_data[comparision_data$actual_list>1,], color = "grey50") +
+  geom_text_repel(box.padding = 0.5, max.overlaps = Inf) +
+  geom_point(data = comparision_data[comparision_data$actual_list<1,], color = "red")
+
+
+
+```
