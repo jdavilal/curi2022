@@ -442,4 +442,3 @@ mut <- as.numeric(coloE_samples[1,])
   actual_list <- append(actual_list, actual)
 expected_list <- append(expected_list, expected)
 ```
-
