@@ -404,11 +404,31 @@ expected_list <- append(expected_list, expected)
 
 df <- cbind(expected_list, actual_list, sample_names)
   df <- as_tibble(df)
-  
- ggplot(data = df, mapping = aes(x = expected_list, y = actual_list))+
-   geom_point(alpha=0.3)+
-   geom_smooth()
 ```  
+  
+#plotting new data and doing eda
+```{r}
+new_comparison <- df %>%
+  mutate(method_coeff = as.numeric(actual_list),
+         true_coeff =as.numeric(expected_list))
+
+ggplot(data = new_comparison, mapping = aes(x = true_coeff, y = method_coeff)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm")
+
+
+histogram(new_comparison$true_coeff - new_comparison$method_coeff)
+
+cor(new_comparison$true_coeff, new_comparison$method_coeff) #0.2241283
+
+test <- new_comparison %>%
+  mutate(difference = (method_coeff - true_coeff))
+
+test <- test %>%
+  select(3:6) %>%
+  filter(difference > 0.5)
+```
+
   
 ```{r, eval=FALSE}
 write.csv(comparision_ds, "Data/comparison_ds.csv", row.names = FALSE)
