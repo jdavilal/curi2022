@@ -404,31 +404,7 @@ expected_list <- append(expected_list, expected)
 
 df <- cbind(expected_list, actual_list, sample_names)
   df <- as_tibble(df)
-```  
-  
-#plotting new data and doing eda
-```{r}
-new_comparison <- df %>%
-  mutate(method_coeff = as.numeric(actual_list),
-         true_coeff =as.numeric(expected_list))
-
-ggplot(data = new_comparison, mapping = aes(x = true_coeff, y = method_coeff)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method = "lm")
-
-
-histogram(new_comparison$true_coeff - new_comparison$method_coeff)
-
-cor(new_comparison$true_coeff, new_comparison$method_coeff) #0.2241283
-
-test <- new_comparison %>%
-  mutate(difference = (method_coeff - true_coeff))
-
-test <- test %>%
-  select(3:6) %>%
-  filter(difference > 0.5)
 ```
-
   
 ```{r, eval=FALSE}
 write.csv(comparision_ds, "Data/comparison_ds.csv", row.names = FALSE)
@@ -469,52 +445,54 @@ mut <- as.numeric(coloE_samples[1,])
 expected_list <- append(expected_list, expected)
 ```
 
-#Reading in correctly named dataset 
+#Exploring Values and Trying to figure out what is going on with certain points
 ```{r}
-comparison_ds <- read_csv("Data/comparison_ds.csv")
-View(comparison_ds)
+evaluation_ds <- read_csv("Data/evaluation_ds.csv")
+
+histogram(evaluation_ds$expected_list - evaluation_ds$actual_list)
+
+cor(evaluation_ds$expected_list, evaluation_ds$actual_list) #0.228
+
+evaluation_ds <- evaluation_ds %>%
+  mutate(difference = abs(expected_list - actual_list))
+
+weirdsamples <- evaluation_ds %>%
+  filter(difference > 0.5)
 ```
 
-#Trying to figure out what is going on with the corners
+#Spot Checking Some Weird Samples
 ```{r}
-ggplot(data = comparison_ds, mapping = aes(x = expected_list, y = actual_list))+
-   geom_point(alpha=0.3)+
-   geom_smooth()
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "TCGA-AA-3975-01A-01W-0995-10")
+sample_prof <- generate_sample_prof(c("SBS1", "SBS5", "SBS17b"), c(47,128,13))
+prop.table(c(47,128,13))
+estimate_coeff(sample_prof, c("SBS1", "SBS5", "SBS17b"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "TCGA-AA-3975-01A-01W-0995-10")
+#so this is inconsistent with what is in the evaluation dataset
 
-test <- comparison_ds %>%
-  filter(abs((actual_list - expected_list)) > 0.8)
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "TCGA-AA-3549-01A-02D-1953-10")
+sample_prof <- generate_sample_prof("SBS15", 13)
+prop.table(c(13))
+estimate_coeff(sample_prof, "SBS15", tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "TCGA-AA-3549-01A-02D-1953-10")
+#there is only one signature present, so our method actually doesn't work with that
 
-weirdsamples <- unique(test$sample_names)
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "sysucc-1364T")
+sample_prof <- generate_sample_prof(c("SBS1", "SBS5", "SBS10a", "SBS10b", "SBS28"), c(144,1460,8776,2983,3256))
+prop.table(c(144,1460,8776,2983,3256))
+estimate_coeff(sample_prof, c("SBS1", "SBS5", "SBS10a", "SBS10b", "SBS28"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "sysucc-1364T")
+#again, inconsistent with with what is in our evaluation ds
 
-weirdsample_df <- coloE_samples %>%
-  filter(Sample.Names %in% weirdsamples)
-
-
-test2 <- comparison_ds %>%
-  filter(abs((actual_list - expected_list)) > 0.5)
-
-weirdsamples2 <- unique(test2$sample_names)
-
-weirdsample_df2 <- coloE_samples %>%
-  filter(Sample.Names %in% weirdsamples2)
-```
-
-```{r}
-mut <- as.numeric(weirdsample_df[1,])
-  nonzero_sig <- (which(mut %nin% c(0, NA)))-1
-  weirdsample_df_samples_noname <- weirdsample_df %>%
-    select(2:60)
-  list <- colnames(weirdsample_df_samples_noname)
-  s_list <- list[nonzero_sig]
-  s_list <- str_remove(s_list, ".Mutations")
-  m_list <- mut[mut %nin% c(0, NA)]
-  
-  s_list <- s_list[s_list %in% known_sig]
-  m_list <- m_list[s_list %in% known_sig]
-  
-  sample_prof <- generate_sample_prof(s_list, m_list)
-  prop.test <- prop.table(m_list)
-  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "T595")
+sample_prof <- generate_sample_prof(c("SBS1", "SBS5"), c(34,54))
+prop.table(c(34,54))
+estimate_coeff(sample_prof, c("SBS1", "SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "T595")
+#again, inconsistent with with what is in our evaluation ds
 ```
 
 
