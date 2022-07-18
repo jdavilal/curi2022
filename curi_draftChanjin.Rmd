@@ -786,7 +786,7 @@ estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2")
 
 
 
-## Evaluation the method
+## Evaluation of the method
 ```{r}
 COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
 cosmic.signatures <- get_known_signatures()
@@ -803,7 +803,6 @@ cosmic_signature_list <- colnames(cosmic.signatures)
 
 known_sig <- signature_list[signature_list %in% cosmic_signature_list]
 ```
-
 ```{r}
 COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
 cosmic.signatures <- get_known_signatures()
@@ -818,6 +817,10 @@ coloE_samples_withnames <- coloE_samples %>%
 coloE_samples <- coloE_samples %>%
   select(6:64) 
 coloE_size <- dim(coloE_samples)[1]
+
+sample_names_list <- coloE_samples_withnames %>%
+    select(1)
+sample_names_list <- as.matrix(sample_names_list)
 ```
 
 Making the final Dataframe
@@ -825,10 +828,11 @@ Making the final Dataframe
 actual_list <- c()
 expected_list <- c()
 fitsig_list <- c()
-sample_names <- c()
 sig_list <- c()
+sample_list <- c()
 
 for (i in 1:coloE_size){
+  
   mut <- as.numeric(coloE_samples[i,])
   nonzero_sig <- (which(mut %nin% c(0, NA)))
   list <- colnames(coloE_samples)
@@ -836,43 +840,42 @@ for (i in 1:coloE_size){
   s_list <- str_remove(s_list, ".Mutations")
   m_list <- mut[mut %nin% c(0, NA)]
   
-  s_list <- s_list[s_list %in% known_sig]
-  m_list <- m_list[s_list %in% known_sig]
+  bool <- s_list %in% known_sig
+  s_list <- s_list[bool]
+  m_list <- m_list[bool]
+  
+  if(length(m_list) == 1){
+    next
+  }
   
   sample_prof <- generate_sample_prof(s_list, m_list)
   prop.test <- prop.table(m_list)
   method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+  fit_test <- fit_to_signatures_strict(sample_prof, cosmic.signatures[,s_list], max_delta = 0.002)
+  fit_test <- fit_test$fit_res$contribution
+  fit_test <- fit_test[,2]
   
-  #Test with simulated sample profile
-  if(length(s_list) == 1){
-    cosmic_1sig <- as.matrix(cosmic.signatures[,s_list])
-    colnames(cosmic_1sig) <- s_list
-    
-    fit_test <- fit_to_signatures_strict(sample_prof, cosmic_1sig, max_delta = 0.002)
-    fit_test <- fit_test$fit_res$contribution
-    fit_test <- fit_test[,2]
-  } else{
-    fit_test <- fit_to_signatures_strict(sample_prof, cosmic.signatures[,s_list], max_delta = 0.002)
-    fit_test <- fit_test$fit_res$contribution
-    fit_test <- fit_test[,2]
-  }
-  
+  sample_names <- c()
   for(j in 1:length(s_list)){
-    sample_names_list <- coloE_samples_withnames %>%
-      select(1)
-    sample_names_list <- as.matrix(sample_names_list)
     sample_name <- sample_names_list[i]
     sample_names <- append(sample_names, sample_name)
   }
   
+  sample_list <- append(sample_list, sample_names)
   actual_list <- append(actual_list, prop.test)
   expected_list <- append(expected_list, method_test)
   fitsig_list <- append(fitsig_list, fit_test)
   sig_list <- append(sig_list, s_list)
 }
 
-eval_df <- cbind(sample_names, sig_list, expected_list, fitsig_list, actual_list)
+eval_df <- cbind(sample_list, sig_list, expected_list, fitsig_list, actual_list)
 eval_df <- as_tibble(eval_df)
+eval_df <- eval_df %>%
+  mutate(
+    expected_list = as.numeric(expected_list),
+    fitsig_list = as.numeric(fitsig_list),
+    actual_list = as.numeric(actual_list)
+  )
 ``` 
 ```{r, eval=FALSE}
 write.csv(eval_df, "Data/evaluation_ds.csv", row.names = FALSE)
@@ -882,7 +885,7 @@ Plot the Actual vs. Expected
 ```{r}
 eval_df <- read_csv("Data/evaluation_ds.csv")
 ggplot(data = eval_df, mapping = aes(x = expected_list, y = actual_list))+
-   geom_point(alpha=0.3)+
+   geom_point(alpha=0.3) +
    geom_smooth(method = "lm")
 
 cor(eval_df$expected_list, eval_df$actual_list)
@@ -894,6 +897,7 @@ mse_list_EF <- c()
 mse_list_EA <- c()
 
 for (i in 1:coloE_size){
+  
   mut <- as.numeric(coloE_samples[i,])
   nonzero_sig <- (which(mut %nin% c(0, NA)))
   list <- colnames(coloE_samples)
@@ -901,14 +905,18 @@ for (i in 1:coloE_size){
   s_list <- str_remove(s_list, ".Mutations")
   m_list <- mut[mut %nin% c(0, NA)]
   
-  s_list <- s_list[s_list %in% known_sig]
-  m_list <- m_list[s_list %in% known_sig]
+  bool <- s_list %in% known_sig
+  s_list <- s_list[bool]
+  m_list <- m_list[bool]
+  
+  if(length(m_list) == 1){
+    next
+  }
   
   sample_prof <- generate_sample_prof(s_list, m_list)
   prop_test <- prop.table(m_list)
   method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
   
-  #Test with simulated sample profile
   if(length(s_list) == 1){
     cosmic_1sig <- as.matrix(cosmic.signatures[,s_list])
     colnames(cosmic_1sig) <- s_list
@@ -933,13 +941,14 @@ for (i in 1:coloE_size){
   mse_list_EA <- append(mse_list_EA, mse)
 }
 
-coloE_sample_names <- COSMICsample_ds %>%
-  filter(Cancer.Types == "ColoRect-AdenoCA") %>%
-  filter(Scale == "exome") %>%
-  select(4)
-coloE_sample_names <- as.matrix(coloE_sample_names)
+coloE_sample_names <- unique(evaluation_ds$sample_list)
 mse_df <- cbind(coloE_sample_names, mse_list_EF, mse_list_EA)
 mse_df <- as_tibble(mse_df)
+mse_df <- mse_df %>%
+  mutate(
+    mse_list_EF = as.numeric(mse_list_EF),
+    mse_list_EA = as.numeric(mse_list_EA)
+  )
 ```
 ```{r, eval=FALSE}
 write.csv(mse_df, "Data/mse_ds.csv", row.names = FALSE)
@@ -965,5 +974,17 @@ mse_df %>%
   ggplot(aes(x = seq(1, dim(mse_df)[1]), y = mse_list_EF)) +
     geom_point() +
     labs(x = "samples", y = "MSE", title = "MSE between Expected and fit_to_signature value") 
+```
+
+```{r}
+evaluation_ds <- evaluation_ds %>%
+  mutate(diff = abs(actual_list - expected_list)) %>%
+  arrange(desc(diff)) 
+
+histogram(evaluation_ds$diff)
+
+evaluation_ds %>%
+  mutate(diff = abs(actual_list - expected_list)) %>%
+  filter(diff > 0.3)
 ```
 
