@@ -22,6 +22,7 @@ library(glmc)
 library(ConsReg)
 library(Hmisc)
 library(yardstick)
+library(reshape2)
 ```
 
 ## Preliminary functions
@@ -851,9 +852,8 @@ for (i in 1:coloE_size){
   sample_prof <- generate_sample_prof(s_list, m_list)
   prop.test <- prop.table(m_list)
   method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
-  fit_test <- fit_to_signatures_strict(sample_prof, cosmic.signatures[,s_list], max_delta = 0.002)
-  fit_test <- fit_test$fit_res$contribution
-  fit_test <- fit_test[,2]
+  fit_test <- fit_to_signatures(sample_prof, cosmic.signatures[,s_list])
+  fit_test <- fit_test$contribution[,2]
   
   sample_names <- c()
   for(j in 1:length(s_list)){
@@ -881,14 +881,65 @@ eval_df <- eval_df %>%
 write.csv(eval_df, "Data/evaluation_ds.csv", row.names = FALSE)
 ```
 
-Plot the Actual vs. Expected
+Plot the Expected vs. Actual
 ```{r}
 eval_df <- read_csv("Data/evaluation_ds.csv")
-ggplot(data = eval_df, mapping = aes(x = expected_list, y = actual_list))+
+
+ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
    geom_point(alpha=0.3) +
-   geom_smooth(method = "lm")
+   geom_smooth(method = "lm") +
+   labs(x = "Expected Value", y = "Actual Value")
+
+ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
+   geom_point(alpha=0.3) +
+   geom_smooth(method = "lm") +
+   facet_wrap(~sig_list) +
+   labs(x = "Expected Value", y = "Actual Value")
 
 cor(eval_df$expected_list, eval_df$actual_list)
+```
+
+Plot the Expected vs. fit_to_sig 
+```{r}
+ggplot(data = eval_df, aes(x = expected_list, y = fitsig_list))+
+   geom_point(alpha=0.3) +
+   geom_smooth(method = "lm") +
+   labs(x = "Expected Value", y = "fit_to_sig Value")
+
+ggplot(data = eval_df, aes(x = expected_list, y = fitsig_list))+
+   geom_point(alpha=0.3) +
+   geom_smooth(method = "lm") +
+   facet_wrap(~sig_list) +
+   labs(x = "Expected Value", y = "fit_to_sig Value")
+
+cor(eval_df$expected_list, eval_df$fitsig_list)
+```
+
+Plot all together
+```{r}
+eval_df.long <- melt(eval_df, id = c("expected_list", "sig_list"), measure = c("actual_list", "fitsig_list"))
+
+ggplot(eval_df.long, aes(expected_list, value, colour = variable)) +
+   geom_point(alpha=0.3) +
+   geom_smooth(method = "lm") +
+   labs(x = "Expected Value")
+
+ggplot(eval_df.long, aes(expected_list, value, colour = variable)) +
+   geom_point(alpha=0.3) +
+   geom_smooth(method = "lm") +
+   facet_wrap(~sig_list) +
+   labs(x = "Expected Value")
+```
+
+//
+lm interaction term
+
+```{r}
+eval_df <- eval_df %>%
+  mutate(diff = abs(actual_list - expected_list)) %>%
+  arrange(desc(diff)) 
+
+histogram(eval_df$diff)
 ```
 
 Getting MSE between Expected vs. fit_to_signature vs. Actual
@@ -916,25 +967,14 @@ for (i in 1:coloE_size){
   sample_prof <- generate_sample_prof(s_list, m_list)
   prop_test <- prop.table(m_list)
   method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
-  
-  if(length(s_list) == 1){
-    cosmic_1sig <- as.matrix(cosmic.signatures[,s_list])
-    colnames(cosmic_1sig) <- s_list
-    
-    fit_test <- fit_to_signatures_strict(sample_prof, cosmic_1sig, max_delta = 0.002)
-    fit_test <- fit_test$fit_res$contribution
-    fit_test <- fit_test[,2]
-  } else{
-    fit_test <- fit_to_signatures_strict(sample_prof, cosmic.signatures[,s_list], max_delta = 0.002)
-    fit_test <- fit_test$fit_res$contribution
-    fit_test <- fit_test[,2]
-  }
+  fit_test <- fit_to_signatures(sample_prof, cosmic.signatures[,s_list])
+  fit_test <- fit_test$contribution[,2]
   
   df <- cbind(fit_test, method_test)
   df <- as_tibble(df)
   mse <- rmse_vec(df$fit_test, df$method_test)^2
   mse_list_EF <- append(mse_list_EF, mse)
-  
+
   df <- cbind(prop_test, method_test)
   df <- as_tibble(df)
   mse <- rmse_vec(df$prop_test, df$method_test)^2
@@ -976,15 +1016,4 @@ mse_df %>%
     labs(x = "samples", y = "MSE", title = "MSE between Expected and fit_to_signature value") 
 ```
 
-```{r}
-evaluation_ds <- evaluation_ds %>%
-  mutate(diff = abs(actual_list - expected_list)) %>%
-  arrange(desc(diff)) 
-
-histogram(evaluation_ds$diff)
-
-evaluation_ds %>%
-  mutate(diff = abs(actual_list - expected_list)) %>%
-  filter(diff > 0.3)
-```
 
