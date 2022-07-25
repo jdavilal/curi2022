@@ -209,186 +209,6 @@ ggplot(data1, aes(x = prob, y = p3, color = signatures)) +
         axis.text.x = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.text.y = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.title = element_text(size = 17), plot.title = element_text(size=22), legend.text=element_text(size=17), legend.title =element_text(size=17)) 
 ```
 
-## Function testing code
-This chuck is for testing the code before making the function.
-It is generating the sample mutational profile based on the selected signatures and the number of mutations of each signature.
-```{r}
-#load the Signatures 10, 6, 1
-cosmic.signatures <- load_cosmic_matrix()
-sig <- cosmic.signatures[,c(10,6)]
-
-sig.labels <-  c("10","6")
-colnames(sig) <- sig.labels
-
-#load the mutation order
-mut.selected <- sample.info %>%
-  select (sample) %>%
-  inner_join (signatures)
-
-mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
-mutational.signature <-  mut.selected
-mut_mat <-  read_csv(mut.order)
-
-mut.join <-  mutational.signature %>%
-  inner_join(mut_mat)
-order.tri <-  unique(mut.join$ext.context)
-mut_order <- as_tibble(order.tri)
-
-
-#define the number of generating mutations of each signature
-n1 <- 5000
-n2 <- 5000
-
-#generate random mutation samples of Signature 10
-a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"10"]))
-df_a <- as_tibble(a)
-df_a <- df_a %>%
-  count(value) %>%
-  mutate(
-    value = factor(value, levels = order.tri),
-    prob = n/sum(n),
-  ) %>%
-  merge(mut_order, all = TRUE)
-
-df_a[is.na(df_a)] <- 0     # Replace NA with 0
-
-#generate random mutation samples of Signature 6
-b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"6"]))
-df_b <- as_tibble(b)
-df_b <- df_b %>%
-  count(value) %>%
-  mutate(
-    value = factor(value, levels = order.tri),
-    prob = n/sum(n)
-  ) %>%
-  merge(mut_order, all = TRUE)
-
-df_b[is.na(df_b)] <- 0     # Replace NA with 0
-
-#join those two sample mutations
-mut_df <- df_a %>%
-  inner_join(df_b, by = "value") %>%
-  mutate(
-    sum_n = n.x + n.y,
-    prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
-  ) %>%
-  select(value, prob)
-
-
-#define the sample profile created by two sample mutations
-sample_profile <- mut_df %>%
-  select(prob)
-
-sample_profile <- as.matrix(sample_profile)
-sample_profile
-
-
-#testing the lm model
-sig <-cosmic.signatures[,c(10,6)]
-sig.labels <- c("sigA", "sigB")
-colnames(sig) <- sig.labels
-
-data<- cbind(sample_profile,sig)
-data<-as_tibble(data)
-model<- lm(prob ~ 0 + sigA + sigB, data=data)
-summary(model)
-
-tidy <- model %>% tidy()
-(coefs <- tidy$estimate)
-```
-
-## New Cosmic signatures Function testing code
-```{r}
-#load the Signatures 10, 6, 1
-cosmic.signatures <- get_known_signatures()
-sig <- cosmic.signatures[,c("SBS7a","SBS7c")]
-
-#load the mutation order
-mut.selected <- sample.info %>%
-  select (sample) %>%
-  inner_join (signatures)
-
-mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
-mutational.signature <-  mut.selected
-mut_mat <-  read_csv(mut.order)
-
-mut.join <-  mutational.signature %>%
-  inner_join(mut_mat)
-order.tri <-  unique(mut.join$ext.context)
-
-rownames(sig) <- order.tri
-mut_order <- as_tibble(order.tri)
-
-
-#define the number of generating mutations of each signature
-n1 <- 5000
-n2 <- 5000
-
-#generate random mutation samples of Signature 10
-a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"SBS7a"]))
-df_a <- as_tibble(a)
-df_a <- df_a %>%
-  count(value) %>%
-  mutate(
-    value = factor(value, levels = order.tri),
-    prob = n/sum(n),
-  ) %>%
-  merge(mut_order, all = TRUE)
-
-df_a[is.na(df_a)] <- 0     # Replace NA with 0
-
-#generate random mutation samples of Signature 6
-b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"SBS7c"]))
-df_b <- as_tibble(b)
-df_b <- df_b %>%
-  count(value) %>%
-  mutate(
-    value = factor(value, levels = order.tri),
-    prob = n/sum(n)
-  ) %>%
-  merge(mut_order, all = TRUE)
-
-df_b[is.na(df_b)] <- 0     # Replace NA with 0
-
-#join those two sample mutations
-mut_df <- df_a %>%
-  inner_join(df_b, by = "value") %>%
-  mutate(
-    sum_n = n.x + n.y,
-    prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
-  ) %>%
-  select(value, prob)
-
-
-#define the sample profile created by two sample mutations
-sample_profile <- mut_df %>%
-  select(prob)
-
-sample_profile <- as.matrix(sample_profile)
-sample_profile
-
-
-#testing the lm model
-sig <- cosmic.signatures[,c("SBS7a","SBS7c")]
-sig.labels <- c("sigA", "sigB")
-colnames(sig) <- sig.labels
-
-data<- cbind(sample_profile,sig)
-data<-as_tibble(data)
-model<- lm(prob ~ 0 + sigA + sigB, data=data)
-summary(model)
-
-tidy <- model %>% tidy()
-(coefs <- tidy$estimate)
-```
-
-```{r}
-#plot the sample mutational profile
-rownames(mut_df) <- mut_df$value
-mut_df <- mut_df %>%
-  select(prob)
-plot_96_profile(mut_df)
-```
 
 ## Function for generating the sample mutation profiles
 Load the Mutation signatures order
@@ -404,139 +224,7 @@ mut_order <- as_tibble(order.tri)
 ```
 
 
-COSMIC Version 2 (*Use the new function below*)
-
-```{r, message=FALSE, warning=FALSE}
-#A, B = Signatures.A, Signatures.B
-#n1 = the number of mutations that we want to generate from the Signature.A
-#n2 = the number of mutations that we want to generate from the Signature.B
-generate_sample_prof_1 <- function(A, B, n1, n2){
-  cosmic.signatures <- load_cosmic_matrix()
-  sig <- cosmic.signatures[,c(A, B)]
-  sig.labels <-  c("A","B")
-  colnames(sig) <- sig.labels
-  
-  #generate random mutation samples of Signature 10
-  a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,"A"]))
-  df_a <- as_tibble(a)
-  df_a <- df_a %>%
-    count(value) %>%
-    mutate(
-      value = factor(value, levels = order.tri),
-      prob = n/sum(n),
-    ) %>%
-    merge(mut_order, all = TRUE)
-  
-  df_a[is.na(df_a)] <- 0     # Replace NA with 0
-  
-  #generate random mutation samples of Signature 6
-  b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,"B"]))
-  df_b <- as_tibble(b)
-  df_b <- df_b %>%
-    count(value) %>%
-    mutate(
-      value = factor(value, levels = order.tri),
-      prob = n/sum(n)
-    ) %>%
-    merge(mut_order, all = TRUE)
-  
-  df_b[is.na(df_b)] <- 0     # Replace NA with 0
-  
-  #join those two sample mutations
-  mut_df <- df_a %>%
-    inner_join(df_b, by = "value") %>%
-    mutate(
-      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
-    ) %>%
-    select(value, prob)
-  
-  #define the sample profile created by two sample mutations
-  sample_profile <- mut_df %>%
-    select(prob)
-  sample_profile <- as.matrix(sample_profile)
-  
-  sample_profile
-}
-```
-
-
-COSMIC Version 3 (new version) with 2 signatures
-This function is generating the sample mutational profile based on the selected signatures `A` and `B` and the number of mutations `n1` and `n2` of each signature.`n1` is the number of mutations that we want to generate from the Signature.A `n2` is the number of mutations that we want to generate from the Signature.B
-
-```{r, message=FALSE, warning=FALSE}
-#A, B = Signatures.A, Signatures.B
-#n1 = the number of mutations that we want to generate from the Signature.A
-#n2 = the number of mutations that we want to generate from the Signature.B
-
-generate_sample_prof_2 <- function(A, B, n1, n2){
-
-  cosmic.signatures <- get_known_signatures()
-  sig <- cosmic.signatures[,c(A,B)]
-  
-  #load the mutation order
-  mut.selected <- sample.info %>%
-    select (sample) %>%
-    inner_join (signatures)
-  
-  mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
-  mutational.signature <-  mut.selected
-  mut_mat <-  read_csv(mut.order)
-  
-  mut.join <-  mutational.signature %>%
-    inner_join(mut_mat)
-  order.tri <-  unique(mut.join$ext.context)
-  
-  rownames(sig) <- order.tri
-  mut_order <- as_tibble(order.tri)
-  
-  
-  #generate random mutation samples of Signature A
-  a <- sample(rownames(sig), size = n1, replace = TRUE, prob = as.vector(sig[,A]))
-  df_a <- as_tibble(a)
-  df_a <- df_a %>%
-    count(value) %>%
-    mutate(
-      value = factor(value, levels = order.tri),
-      prob = n/sum(n),
-    ) %>%
-    merge(mut_order, all = TRUE)
-  
-  df_a[is.na(df_a)] <- 0     # Replace NA with 0
-  
-  #generate random mutation samples of Signature B
-  b <- sample(rownames(sig), size = n2, replace = TRUE, prob = as.vector(sig[,B]))
-  df_b <- as_tibble(b)
-  df_b <- df_b %>%
-    count(value) %>%
-    mutate(
-      value = factor(value, levels = order.tri),
-      prob = n/sum(n)
-    ) %>%
-    merge(mut_order, all = TRUE)
-  
-  df_b[is.na(df_b)] <- 0     # Replace NA with 0
-  
-  #join those two sample mutations
-  mut_df <- df_a %>%
-    inner_join(df_b, by = "value") %>%
-    mutate(
-      sum_n = n.x + n.y,
-      prob = ((prob.x * (n1/(n1+n2))) + (prob.y * (n2/(n1+n2))))
-    ) %>%
-    select(value, prob)
-  
-  
-  #define the sample profile created by two sample mutations
-  sample_profile <- mut_df %>%
-    select(prob)
-  
-  sample_profile <- as.matrix(sample_profile)
-  sample_profile
-}
-```
-
-
-COSMIC Version 3 (new version) with multiple signatures
+This function iss for generating the sample profile with multiple signatures.
 ```{r, message=FALSE, warning=FALSE}
 #sigs = the array of the signatures that we want to put 
 #nums = the number of mutations that we want to generate for each signature
@@ -620,76 +308,9 @@ plot_sample_prof <- function(sample_profile){
 }
 ```
 
-## Linear Regression function
-Linear regression function for the COSMIC Version 2 (*Use the new function below*)
-```{r}
-lm_test_1 <- function(sample_profile, sigA, sigB){
-  
-  cosmic.signatures <- load_cosmic_matrix()
-  sig <- cosmic.signatures[,c(sigA,sigB)]
-  cosmic.signatures <- get_known_signatures()
-  sig.labels <- c("sigA", "sigB")
-  colnames(sig) <- sig.labels
- 
-  data<- cbind(sample_profile,sig)
-  data<-as_tibble(data)
-  model<- lm(prob ~ 0 + sigA + sigB, data=data)
-  
-  tidy <- model %>% tidy()
-  tidy$estimate
-}
-```
+## Linear Regression Model with constraints
+This function generates the linear combination of the selected multiple signatures with positive constraints for the generated sample mutational profile.
 
-COSMIC Version 3
-This Function generate the simple Linear regression model for the generated sample mutational profile based on two signatures Signature.A and Signature.B.
-```{r}
-lm_test_2 <- function(sample_profile, sigA, sigB){
-  
-  cosmic.signatures <- get_known_signatures()
-  sig <- cosmic.signatures[,c(sigA,sigB)]
-  cosmic.signatures <- get_known_signatures()
-  sig.labels <- c("sigA", "sigB")
-  colnames(sig) <- sig.labels
- 
-  data<- cbind(sample_profile,sig)
-  data<-as_tibble(data)
-  model<- lm(prob ~ 0 + sigA + sigB, data=data)
-  
-  tidy <- model %>% tidy()
-  tidy$estimate
-}
-```
-
-
-COSMIC Version 3
-This Function generate the Linear regression model with positive constraints for the generated sample mutational profile based on the selected multiple signatures.
-```{r}
-lm_test <- function(sample_profile, sigs, constrs){
-  
-  cosmic.signatures <- get_known_signatures()
-  sig <- cosmic.signatures[,sigs]
-  
-  df <- cbind(sample_profile,sig)
-  df <- as_tibble(df)
-  
-  constraints <- str_c(constrs[1], ' < ', sigs[1], ', ', sigs[1], ' < ', constrs[2])
-  for (i in 2:length(sigs)){
-    constraint <- str_c(constrs[2*i-1], ' < ', sigs[i], ', ', sigs[i], ' < ', constrs[2*i])
-    constraints <- str_c(constraints, ', ', constraint)
-  }
-  
-  model<- ConsReg(formula = prob ~ 0 + ., data = df,
-            family = 'gaussian',
-            constraints = constraints
-            )
-  
-  model$coefficients
-  #coeff <- as.tibble(model$coefficients)
-  #coeff$value
-}
-```
-
-new
 ```{r}
 estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
   
@@ -741,38 +362,57 @@ estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, 
 }
 ```
 
+This function is our final method named **Dissolvo** and prevents the model from having negative coefficients.
+```{r}
+dissolvo <- function(s_list, m_list, tissue_type, scale, quantiles, mb_size){
+  neg_count <- 1
+  while(neg_count != 0){
+    sample_prof <- generate_sample_prof(s_list, m_list)
+    model <- estimate_coeff(sample_prof, sigs = s_list, tissue_type, scale, quantiles, mb_size)
+    coeff_list <- unname(model)
+    neg_count <- sum(coeff_list < 0)
+  }
+  model
+}
+```
 
-Function testing code
+
+Method testing code
 ```{r}
 #1 sig
 sample_profile <- generate_sample_prof(c("SBS10a"),c(7000))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+estimate_coeff(sample_profile, sigs = c("SBS10a"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(c("SBS10a"),c(7000), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
 #2 sigs
 sample_profile <- generate_sample_prof(c("SBS10a","SBS6"),c(3000,7000))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+estimate_coeff(sample_profile, sigs = c("SBS10a","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(c("SBS10a","SBS6"), c(3000,7000), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
 #3 sigs
 sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(200,300,500))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
+estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
+dissolvo(c("SBS1","SBS10b","SBS6"), c(200,300,500), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
 #4 sigs
 sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6"),c(300,100,200,400))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(c("SBS10a","SBS10b","SBS1","SBS6"), c(300,100,200,400), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
 #5 sigs
 sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"),c(200,300,100,300,100))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tissue_type = "BRCA", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"),c(200,300,100,300,100), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 ```
 
 
 
-## Evaluation of the method
+## Evaluation of Dissolvo
 ```{r}
 COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
 cosmic.signatures <- get_known_signatures()
@@ -789,7 +429,6 @@ cosmic_signature_list <- colnames(cosmic.signatures)
 
 known_sig <- signature_list[signature_list %in% cosmic_signature_list]
 ```
-
 ```{r}
 coloE_samples <- COSMICsample_ds %>%
   filter(Cancer.Types == "ColoRect-AdenoCA") %>%
@@ -806,7 +445,7 @@ sample_names_list <- coloE_samples_withnames %>%
 sample_names_list <- as.matrix(sample_names_list)
 ```
 
-Making the final Dataframe
+This chunk is making the final dataframe for the evaluation of the method.
 ```{r, eval=FALSE}
 actual_list <- c()
 expected_list <- c()
@@ -938,38 +577,6 @@ histogram(eval_df$expected_list-eval_df$actual_list)
 mosaic::fav_stats(eval_df$fitsig_list-eval_df$actual_list)
 mosaic::fav_stats(eval_df$expected_list-eval_df$actual_list)
 ```
-
-Result
-```{r}
-eval_df %>%
-  mutate(
-    diff = abs(expected_list - actual_list),
-    diff2 = abs(fitsig_list - actual_list)
-  ) %>%
-  filter(
-    diff < diff2
-  ) %>%
-  filter(
-    abs(diff - diff2) > 0.01
-  ) 
-
-eval_df %>%
-  mutate(
-    diff = abs(expected_list - actual_list),
-    diff2 = abs(fitsig_list - actual_list)
-  ) %>%
-  group_by(sample_list) %>% 
-  filter(
-    diff > diff2 
-  ) %>%
-  filter(
-    abs(diff - diff2) > 0.01
-  )
-```
-
-
-//
-lm interaction term
 
 
 Getting MSE between Expected vs. fit_to_signature vs. Actual
