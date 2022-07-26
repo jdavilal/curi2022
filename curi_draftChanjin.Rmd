@@ -250,6 +250,7 @@ generate_sample_prof <- function(sigs, nums){
   if(length(sigs) == 1){
     names(sig) <- order.tri
     sig <- as.matrix(sig)
+    mut_order <- as_tibble(order.tri)
   } else{
     rownames(sig) <- order.tri
     mut_order <- as_tibble(order.tri)
@@ -309,23 +310,15 @@ plot_sample_prof <- function(sample_profile){
 ```
 
 ## Linear Regression Model with constraints
-This function generates the linear combination of the selected multiple signatures with positive constraints for the generated sample mutational profile.
+The function **Dissolvo** generates the linear combination of the selected multiple signatures with positive constraints for the generated sample mutational profile.
 
 ```{r}
-estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
+dissolvo <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
   
-  #parameters testing
-  #sample_profile <- generate_sample_prof(s_list, m_list)
   total_mut <- unname(colSums(sample_profile)[1])
   
   sample_profile <- as.matrix(sample_profile[,2])
   colnames(sample_profile) <- c("prob")
-  
-  # sigs <- s_list
-  # tissue_type <- "COAD"
-  # scale <- "exome"
-  # quantiles <- c("5%","95%")
-  # mb_size <- 50
 
   #pulling constraints
   constraints_ds <- read_csv("Data/constraints_ds.csv")
@@ -355,32 +348,13 @@ estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, 
   
   model<- ConsReg(formula = prob ~ 0 + ., data = df,
             family = 'gaussian',
-            constraints = constraints,
-            LOWER = 0, UPPER = 1.1
+            constraints = constraints
             )
   
   model$coefficients
 }
 ```
 
-This function is our final method named **Dissolvo** and prevents the model from having negative coefficients.
-//
-```{r}
-sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(200,300,500))
-test1 <- estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
-test1
-
-dissolvo <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
-  neg_count <- 1
-  while(neg_count != 0){
-    sample_prof <- generate_sample_prof(s_list, m_list)
-    model <- estimate_coeff(sample_prof, sigs = s_list, tissue_type, scale, quantiles, mb_size)
-    coeff_list <- unname(model)
-    neg_count <- sum(coeff_list < 0)
-  }
-  model
-}
-```
 
 
 Method testing code
@@ -388,34 +362,28 @@ Method testing code
 #1 sig
 sample_profile <- generate_sample_prof(c("SBS10a"),c(7000))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
-dissolvo(c("SBS10a"),c(7000), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(sample_profile, sigs = c("SBS10a"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
 #2 sigs
 sample_profile <- generate_sample_prof(c("SBS10a","SBS6"),c(3000,7000))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
-dissolvo(c("SBS10a","SBS6"), c(3000,7000), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(sample_profile, sigs = c("SBS10a","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
 #3 sigs
 sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(200,300,500))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
-dissolvo(c("SBS1","SBS10b","SBS6"), c(200,300,500), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
 
 #4 sigs
 sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6"),c(300,100,200,400))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
-dissolvo(c("SBS10a","SBS10b","SBS1","SBS6"), c(300,100,200,400), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
 #5 sigs
 sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"),c(200,300,100,300,100))
 plot_sample_prof(sample_profile)
-estimate_coeff(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
-dissolvo(c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"),c(200,300,100,300,100), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+dissolvo(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 ```
-
 
 
 ## Evaluation of Dissolvo
@@ -452,62 +420,6 @@ sample_names_list <- as.matrix(sample_names_list)
 ```
 
 This chunk is making the final dataframe for the evaluation of the method.
-
-//fixing
-```{r, eval=FALSE}
-actual_list <- c()
-expected_list <- c()
-fitsig_list <- c()
-sig_list <- c()
-sample_list <- c()
-
-for (i in 1:coloE_size){
-  
-  mut <- as.numeric(coloE_samples[i,])
-  nonzero_sig <- (which(mut %nin% c(0, NA)))
-  list <- colnames(coloE_samples)
-  s_list <- list[nonzero_sig]
-  s_list <- str_remove(s_list, ".Mutations")
-  m_list <- mut[mut %nin% c(0, NA)]
-  
-  bool <- s_list %in% known_sig
-  s_list <- s_list[bool]
-  m_list <- m_list[bool]
-  
-  if(length(m_list) == 1){
-    next
-  }
-  
-  prop.test <- prop.table(m_list)
-  
-  sample_prof <- generate_sample_prof(s_list, m_list)
-  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
-  fit_test <- fit_to_signatures(sample_prof, cosmic.signatures[,s_list])
-  fit_test <- fit_test$contribution[,2]
-  
-  sample_names <- c()
-  for(j in 1:length(s_list)){
-    sample_name <- sample_names_list[i]
-    sample_names <- append(sample_names, sample_name)
-  }
-  
-  sample_list <- append(sample_list, sample_names)
-  actual_list <- append(actual_list, prop.test)
-  expected_list <- append(expected_list, method_test)
-  fitsig_list <- append(fitsig_list, fit_test)
-  sig_list <- append(sig_list, s_list)
-}
-
-eval_df <- cbind(sample_list, sig_list, expected_list, fitsig_list, actual_list)
-eval_df <- as_tibble(eval_df)
-eval_df <- eval_df %>%
-  mutate(
-    expected_list = as.numeric(expected_list),
-    fitsig_list = as.numeric(fitsig_list),
-    actual_list = as.numeric(actual_list)
-  )
-``` 
-
 ```{r, eval=FALSE}
 actual_list <- c()
 expected_list <- c()
@@ -537,7 +449,7 @@ for (i in 1:coloE_size){
   neg_count <- 1
   while(neg_count != 0){
     sample_prof <- generate_sample_prof(s_list, m_list)
-    model <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "OV", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
+    model <- dissolvo(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
     coeff_list <- unname(model)
     neg_count <- sum(coeff_list < 0)
   }
@@ -572,7 +484,7 @@ eval_df <- eval_df %>%
 write.csv(eval_df, "Data/Ovarian_ds.csv", row.names = FALSE)
 ```
 
-//
+Checking
 ```{r}
 eval_df %>%
   mutate(
@@ -590,10 +502,11 @@ eval_df %>%
 ```
 
 
-Plot the Expected vs. Actual
+## Result Figures - Plot the Expected vs. Actual
 ```{r}
 eval_df <- read_csv("Data/evaluation_ds.csv")
 
+#Result Figure1
 ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
    geom_point(alpha=0.3) +
    geom_smooth(method = "lm") +
@@ -602,31 +515,22 @@ ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
 cor(eval_df$expected_list, eval_df$actual_list)
 cor(eval_df$fitsig_list, eval_df$actual_list)
 
-sig_levels <- c("SBS1", "SBS5", "SBS15", "SBS40", "SBS44")
 
 sig_levels <- c("SBS1", "SBS5", "SBS15", "SBS40", "SBS44")
 eval_df2 <- eval_df %>%
-  #mutate(sig_list = factor(sig_list, sig_levels)) %>%
+  mutate(sig_list = factor(sig_list, sig_levels)) %>%
   group_by(sig_list) %>%
-  summarise(n = n()) %>%
+  mutate(n = n()) %>%
   filter(n > 65 & !is.na(sig_list))
 
-ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
+#Result Figure2
+ggplot(data = eval_df2, aes(x = expected_list, y = actual_list))+
    geom_point(alpha=0.3) +
    geom_smooth(method = "lm") +
    facet_wrap(~sig_list) +
    labs(x = "Expected Value", y = "Actual Value")
 ```
 
-order
-sort out
-```{r}
-eval_df <- eval_df %>%
-  mutate(diff = abs(actual_list - expected_list)) %>%
-  arrange(desc(diff)) 
-
-histogram(eval_df$diff)
-```
 
 Plot the Expected vs. fit_to_sig 
 ```{r}
@@ -700,7 +604,7 @@ for (i in 1:coloE_size){
   neg_count <- 1
   while(neg_count != 0){
     sample_prof <- generate_sample_prof(s_list, m_list)
-    model <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
+    model <- dissolvo(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
     coeff_list <- unname(model)
     neg_count <- sum(coeff_list < 0)
   }
