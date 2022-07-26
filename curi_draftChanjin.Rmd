@@ -355,7 +355,8 @@ estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, 
   
   model<- ConsReg(formula = prob ~ 0 + ., data = df,
             family = 'gaussian',
-            constraints = constraints
+            constraints = constraints,
+            LOWER = 0, UPPER = 1.1
             )
   
   model$coefficients
@@ -363,8 +364,13 @@ estimate_coeff <- function(sample_profile, sigs, tissue_type, scale, quantiles, 
 ```
 
 This function is our final method named **Dissolvo** and prevents the model from having negative coefficients.
+//
 ```{r}
-dissolvo <- function(s_list, m_list, tissue_type, scale, quantiles, mb_size){
+sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(200,300,500))
+test1 <- estimate_coeff(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
+test1
+
+dissolvo <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_size){
   neg_count <- 1
   while(neg_count != 0){
     sample_prof <- generate_sample_prof(s_list, m_list)
@@ -446,6 +452,62 @@ sample_names_list <- as.matrix(sample_names_list)
 ```
 
 This chunk is making the final dataframe for the evaluation of the method.
+
+//fixing
+```{r, eval=FALSE}
+actual_list <- c()
+expected_list <- c()
+fitsig_list <- c()
+sig_list <- c()
+sample_list <- c()
+
+for (i in 1:coloE_size){
+  
+  mut <- as.numeric(coloE_samples[i,])
+  nonzero_sig <- (which(mut %nin% c(0, NA)))
+  list <- colnames(coloE_samples)
+  s_list <- list[nonzero_sig]
+  s_list <- str_remove(s_list, ".Mutations")
+  m_list <- mut[mut %nin% c(0, NA)]
+  
+  bool <- s_list %in% known_sig
+  s_list <- s_list[bool]
+  m_list <- m_list[bool]
+  
+  if(length(m_list) == 1){
+    next
+  }
+  
+  prop.test <- prop.table(m_list)
+  
+  sample_prof <- generate_sample_prof(s_list, m_list)
+  method_test <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
+  fit_test <- fit_to_signatures(sample_prof, cosmic.signatures[,s_list])
+  fit_test <- fit_test$contribution[,2]
+  
+  sample_names <- c()
+  for(j in 1:length(s_list)){
+    sample_name <- sample_names_list[i]
+    sample_names <- append(sample_names, sample_name)
+  }
+  
+  sample_list <- append(sample_list, sample_names)
+  actual_list <- append(actual_list, prop.test)
+  expected_list <- append(expected_list, method_test)
+  fitsig_list <- append(fitsig_list, fit_test)
+  sig_list <- append(sig_list, s_list)
+}
+
+eval_df <- cbind(sample_list, sig_list, expected_list, fitsig_list, actual_list)
+eval_df <- as_tibble(eval_df)
+eval_df <- eval_df %>%
+  mutate(
+    expected_list = as.numeric(expected_list),
+    fitsig_list = as.numeric(fitsig_list),
+    actual_list = as.numeric(actual_list)
+  )
+``` 
+
 ```{r, eval=FALSE}
 actual_list <- c()
 expected_list <- c()
@@ -475,7 +537,7 @@ for (i in 1:coloE_size){
   neg_count <- 1
   while(neg_count != 0){
     sample_prof <- generate_sample_prof(s_list, m_list)
-    model <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "COAD", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
+    model <- estimate_coeff(sample_prof, sigs = s_list, tissue_type = "OV", scale = "exome", quantiles = c("5%","95%"), mb_size = 50)
     coeff_list <- unname(model)
     neg_count <- sum(coeff_list < 0)
   }
@@ -507,8 +569,26 @@ eval_df <- eval_df %>%
   )
 ``` 
 ```{r, eval=FALSE}
-write.csv(eval_df, "Data/evaluation_ds.csv", row.names = FALSE)
+write.csv(eval_df, "Data/Ovarian_ds.csv", row.names = FALSE)
 ```
+
+//
+```{r}
+eval_df %>%
+  mutate(
+    diff1 = abs(expected_list - actual_list),
+    diff2 = abs(fitsig_list - actual_list)) %>%
+  filter(diff1 < diff2) %>%
+  filter(diff2 - diff1 > 0.01)
+
+eval_df %>%
+  mutate(
+    diff1 = abs(expected_list - actual_list),
+    diff2 = abs(fitsig_list - actual_list)) %>%
+  filter(diff1 > diff2) %>%
+  filter(diff1 - diff2 > 0.01)
+```
+
 
 Plot the Expected vs. Actual
 ```{r}
@@ -519,14 +599,27 @@ ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
    geom_smooth(method = "lm") +
    labs(x = "Expected Value", y = "Actual Value")
 
+cor(eval_df$expected_list, eval_df$actual_list)
+cor(eval_df$fitsig_list, eval_df$actual_list)
+
+sig_levels <- c("SBS1", "SBS5", "SBS15", "SBS40", "SBS44")
+
+sig_levels <- c("SBS1", "SBS5", "SBS15", "SBS40", "SBS44")
+eval_df2 <- eval_df %>%
+  #mutate(sig_list = factor(sig_list, sig_levels)) %>%
+  group_by(sig_list) %>%
+  summarise(n = n()) %>%
+  filter(n > 65 & !is.na(sig_list))
+
 ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
    geom_point(alpha=0.3) +
    geom_smooth(method = "lm") +
    facet_wrap(~sig_list) +
    labs(x = "Expected Value", y = "Actual Value")
-
-cor(eval_df$expected_list, eval_df$actual_list)
 ```
+
+order
+sort out
 ```{r}
 eval_df <- eval_df %>%
   mutate(diff = abs(actual_list - expected_list)) %>%
@@ -578,6 +671,7 @@ mosaic::fav_stats(eval_df$fitsig_list-eval_df$actual_list)
 mosaic::fav_stats(eval_df$expected_list-eval_df$actual_list)
 ```
 
+histogram for all cancer types
 
 Getting MSE between Expected vs. fit_to_signature vs. Actual
 ```{r, eval=FALSE}
