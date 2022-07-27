@@ -302,7 +302,7 @@ generate_sample_prof <- function(A, B, n){
     select (sample) %>%
     inner_join (signatures)
   
-  mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
+  mut.order="~/Desktop/curi2022/mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
 mutational.signature <-  mut.selected
 mut_mat <-  read_csv(mut.order)
 
@@ -1218,15 +1218,16 @@ View(comparison_ds)
 
 
 
-ggplot(data = comparision_data, mapping = aes(x = expected_list, y = actual_list))+
-   geom_point(alpha=0.3)+
+ggplot(data = comparison_ds, mapping = aes(x = expected_list, y = actual_list))+
+   geom_point(alpha=0.2)+
    geom_smooth()
  
+
+  
  
  
- 
-comparision_data %>%
-  filter(actual_list > 1)
+comparison_ds %>%
+  filter(actual_list = 1)
  
 df_1 %>%
   filter(sample_names == "TCGA-AA-3524-01A-02D-1953-10")
@@ -1246,3 +1247,57 @@ ggplot(comparision_data, aes(x = expected_list, y = actual_list, label= sample_n
 
 
 ```
+
+
+#Exploring Values and Trying to figure out what is going on with certain points
+```{r}
+evaluation_ds <- read_csv("~/Desktop/curi2022/Data/evaluation_ds.csv")
+
+histogram(evaluation_ds$expected_list - evaluation_ds$actual_list)
+
+cor(evaluation_ds$expected_list, evaluation_ds$actual_list) #0.228
+
+evaluation_ds <- evaluation_ds %>%
+  mutate(difference = abs(expected_list - actual_list))
+
+weirdsamples <- evaluation_ds %>%
+  filter(difference > 0.5)
+```
+
+#Spot Checking Some Weird Samples
+```{r}
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "TCGA-AA-3975-01A-01W-0995-10")
+sample_prof <- generate_sample_prof(c("SBS1", "SBS5", "SBS17b"), c(47,128,13))
+prop.table(c(47,128,13))
+estimate_coeff(sample_prof, c("SBS1", "SBS5", "SBS17b"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "TCGA-AA-3975-01A-01W-0995-10")
+#so this is inconsistent with what is in the evaluation dataset
+
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "TCGA-AA-3549-01A-02D-1953-10")
+sample_prof <- generate_sample_prof("SBS15", 13)
+prop.table(c(13))
+estimate_coeff(sample_prof, "SBS15", tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "TCGA-AA-3549-01A-02D-1953-10")
+#there is only one signature present, so our method actually doesn't work with that
+
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "sysucc-1364T")
+sample_prof <- generate_sample_prof(c("SBS1", "SBS5", "SBS10a", "SBS10b", "SBS28"), c(144,1460,8776,2983,3256))
+prop.table(c(144,1460,8776,2983,3256))
+estimate_coeff(sample_prof, c("SBS1", "SBS5", "SBS10a", "SBS10b", "SBS28"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "sysucc-1364T")
+#again, inconsistent with with what is in our evaluation ds
+
+test <- COSMICsample_ds %>%
+  filter(Sample.Names == "T595")
+sample_prof <- generate_sample_prof(c("SBS1", "SBS5"), c(34,54))
+prop.table(c(34,54))
+estimate_coeff(sample_prof, c("SBS1", "SBS5"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
+weirdsamples %>% filter(sample_names == "T595")
+#again, inconsistent with with what is in our evaluation ds
+```
+
+
+
