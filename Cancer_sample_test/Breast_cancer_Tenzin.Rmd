@@ -164,11 +164,17 @@ d<-cor(eval_df_16$expected_list, eval_df_16$actual_list)
 e<-cor(eval_df_17$expected_list, eval_df_17$actual_list)
 f<-cor(eval_df_2$expected_list, eval_df_2$actual_list)
 g<-cor(eval_df_3$expected_list, eval_df_3$actual_list)
-h<-cor(eval_df_18$expected_list, eval_df_18$actual_list)
+h<-cor(eval_df_5$expected_list, eval_df_5$actual_list)
 i<-cor(eval_df_4$expected_list, eval_df_4$actual_list)
 j<-cor(eval_df_6$expected_list, eval_df_6$actual_list)
 
 all_corr<- c(a,b,c,d,e,f,g,h,i,j)
-histo<- data.frame(all_corr)
-histogram(histo$all_corr)
+all_cancer<- c("Breast_cancer","Colorectal_cancer","Stomach_cancer","Prostate_cancer","Head_cancer","Skin_cancer","Liver_cancer","Bladder_cancer","Lung_cancer","Uterus_cancer")
+cancer_data<- data.frame(all_corr,all_cancer)
+histogram(cancer_data$all_corr)
+```
+
+```{r}
+write.csv(cancer_data, "Data/all_cancer_correlation.csv", row.names = FALSE)
+```
 ```
