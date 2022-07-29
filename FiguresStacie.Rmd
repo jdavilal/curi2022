@@ -51,9 +51,9 @@ p3_final <- p3_final %>%
 #plot1, maybe work on window size?
 ggplot(p3_final, aes(x = sig10, y = p3, label = ext.context)) +
   geom_point(alpha = 0.3) + 
-  geom_text(data = subset(p3_final, p3 > 0.12 & sig10 < 0.1), aes(p3,sig10,label=ext.context), hjust = 4.2, vjust = -15.5) +
-  geom_text(data = subset(p3_final, p3 > 0.14 & sig10 > 0.2), aes(p3,sig10,label=ext.context), hjust = -2, vjust = 9.5) +
-  geom_text(data = subset(p3_final, sig10 > 0.3), aes(p3,sig10,label=ext.context), hjust = -7.5, vjust = 34) +
+  geom_text(data = subset(p3_final, p3 > 0.12 & sig10 < 0.1), aes(p3,sig10,label=ext.context), hjust = 4, vjust = -20.5) +
+  geom_text(data = subset(p3_final, p3 > 0.14 & sig10 > 0.2), aes(p3,sig10,label=ext.context), hjust = -2, vjust = 12) +
+  geom_text(data = subset(p3_final, sig10 > 0.3), aes(p3,sig10,label=ext.context), hjust = -7.25, vjust = 44) +
   geom_smooth(method = "lm", color = "mediumpurple3", level = 0.5) +
   labs(title = "Sample Profile Against SBS10", 
        x = "SBS10",
@@ -70,8 +70,8 @@ ggsave("method1.png", device='png', dpi=700)
 #plot2
 ggplot(p3_final, aes(x = sig6, y = p3)) +
   geom_point(alpha = 0.3) +
-  geom_text(data = subset(p3_final, p3 > 0.12 & sig6 < 0.1), aes(p3,sig6,label=ext.context), hjust = 6, vjust = -22.5) +
-  geom_text(data = subset(p3_final, p3 > 0.12 & sig6 > 0.1), aes(p3,sig6,label=ext.context), hjust = 1.9, vjust = -6) +
+  geom_text(data = subset(p3_final, p3 > 0.12 & sig6 < 0.1), aes(p3,sig6,label=ext.context), hjust = 5.75, vjust = -29) +
+  geom_text(data = subset(p3_final, p3 > 0.12 & sig6 > 0.1), aes(p3,sig6,label=ext.context), hjust = 1.75, vjust = -8) +
   geom_smooth(method = "lm", color = "mediumpurple3", level = 0.5) +
   labs(title = "Plot of Sample Profile Against SBS6", 
        x = "SBS6",
