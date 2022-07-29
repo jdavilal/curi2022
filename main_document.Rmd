@@ -499,6 +499,23 @@ ggplot(data = eval_df2, aes(x = expected_list, y = actual_list))+
    geom_smooth(method = "lm") +
    facet_wrap(~sig_list) +
    labs(x = "Expected Value", y = "Actual Value")
+
+#Correlation of each signature
+sbs1 <- eval_df2 %>%
+  filter(sig_list == "SBS1")
+cor(sbs1$expected_list, sbs1$actual_list)
+
+sbs5 <- eval_df2 %>%
+  filter(sig_list == "SBS5")
+cor(sbs5$expected_list, sbs5$actual_list)
+
+sbs40 <- eval_df2 %>%
+  filter(sig_list == "SBS40")
+cor(sbs40$expected_list, sbs40$actual_list)
+
+sbs44 <- eval_df2 %>%
+  filter(sig_list == "SBS44")
+cor(sbs44$expected_list, sbs44$actual_list)
 ```
 
 
