@@ -33,7 +33,7 @@ The following functions allow us to load and analyze mutational signatures
 # Loads a mutational signature matrix from a mutational signature txt file
 load_old_mutational_matrix<- 
   function(filename,
-          mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+          mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
   mutational.signature <-  read_csv(filename)
   mut_mat <-  read_csv(mut.order)
 
@@ -56,7 +56,7 @@ load_old_mutational_matrix<-
 
 change_old_mutational_matrix<-
     function(sig.frame,
-             mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+             mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
         
   mutational.signature <-  sig.frame
   mut_mat <-  read_csv(mut.order)
@@ -80,7 +80,7 @@ change_old_mutational_matrix<-
     return (t(mut.matrix))
 }
 
-load_cosmic_matrix<- function(mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+load_cosmic_matrix<- function(mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv") {
 
   sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
                 "signatures_probabilities.txt", sep = "")
@@ -163,12 +163,12 @@ samples that have high sequencing coverage (over 5Mb at 20x)
 ```{r}
 # Load mutational signature data for all samples
 signatures <- read_csv(
-    "mutational_sig_oec-main/supplied_data/mutational.sig.csv")
+    "mutational_sig_oec/supplied_data/mutational.sig.csv")
 
 # Load sequencing/cohort info for samples, filter with at
 # at least 5 million Mb covered
 sample.info <-
-    read_csv("mutational_sig_oec-main/supplied_data/sample.info.csv") %>%
+    read_csv("mutational_sig_oec/supplied_data/sample.info.csv") %>%
     filter (area.cov > 5e6)
 ```
 
@@ -211,20 +211,7 @@ ggplot(data1, aes(x = prob, y = p3, color = signatures)) +
 
 
 ## Function for generating the sample mutation profiles
-Load the Mutation signatures order
-```{r}
-mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
-mutational.signature <-  mut.selected
-mut_mat <-  read_csv(mut.order)
-
-mut.join <-  mutational.signature %>%
-  inner_join(mut_mat)
-order.tri <-  unique(mut.join$ext.context)
-mut_order <- as_tibble(order.tri)
-```
-
-
-This function iss for generating the sample profile with multiple signatures.
+This function is for generating the sample profile with multiple signatures.
 ```{r, message=FALSE, warning=FALSE}
 #sigs = the array of the signatures that we want to put 
 #nums = the number of mutations that we want to generate for each signature
@@ -239,7 +226,7 @@ generate_sample_prof <- function(sigs, nums){
     select (sample) %>%
     inner_join (signatures)
   
-  mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
+  mut.order="mutational_sig_oec/supplied_data/mut_sig.order.csv"
   mutational.signature <-  mut.selected
   mut_mat <-  read_csv(mut.order)
   
@@ -484,23 +471,6 @@ eval_df <- eval_df %>%
 write.csv(eval_df, "Data/Ovarian_ds.csv", row.names = FALSE)
 ```
 
-Checking
-```{r}
-eval_df %>%
-  mutate(
-    diff1 = abs(expected_list - actual_list),
-    diff2 = abs(fitsig_list - actual_list)) %>%
-  filter(diff1 < diff2) %>%
-  filter(diff2 - diff1 > 0.01)
-
-eval_df %>%
-  mutate(
-    diff1 = abs(expected_list - actual_list),
-    diff2 = abs(fitsig_list - actual_list)) %>%
-  filter(diff1 > diff2) %>%
-  filter(diff1 - diff2 > 0.01)
-```
-
 
 ## Result Figures - Plot the Expected vs. Actual
 ```{r}
@@ -575,7 +545,6 @@ mosaic::fav_stats(eval_df$fitsig_list-eval_df$actual_list)
 mosaic::fav_stats(eval_df$expected_list-eval_df$actual_list)
 ```
 
-histogram for all cancer types
 
 Getting MSE between Expected vs. fit_to_signature vs. Actual
 ```{r, eval=FALSE}
@@ -658,7 +627,5 @@ mse_df %>%
     geom_point() +
     labs(x = "samples", y = "MSE", title = "MSE between Expected and fit_to_signature value") 
 ```
-
-
 
 
