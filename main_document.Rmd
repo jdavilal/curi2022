@@ -343,7 +343,7 @@ dissolvo <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_siz
 ```
 
 
-Method testing code
+**Dissolvo** testing code
 ```{r}
 #1 sig
 sample_profile <- generate_sample_prof(c("SBS10a"),c(7000))
@@ -372,7 +372,7 @@ dissolvo(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tiss
 ```
 
 
-## Evaluation of Dissolvo for ColoRect Cancer
+## Evaluation of **Dissolvo** for ColoRect Cancer
 ```{r}
 COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
 cosmic.signatures <- get_known_signatures()
@@ -405,7 +405,7 @@ sample_names_list <- coloE_samples_withnames %>%
 sample_names_list <- as.matrix(sample_names_list)
 ```
 
-This chunk is making the final dataframe for the evaluation of the method.
+This chunk is making the final dataframe for the evaluation of the method. We are going to comapre the coefficients from **Dissolvo**, **fit_to_signature** function from MutationalPatterns library, and the true proportion.
 ```{r, eval=FALSE}
 actual_list <- c()
 expected_list <- c()
@@ -472,6 +472,7 @@ eval_df <- eval_df %>%
 
 
 ## Result Figures - Plot the Expected vs. Actual
+This plot is comparing the result from **Dissolve**(Expected) and the true proportion(Actual).
 ```{r}
 eval_df <- read_csv("Cancer_Evaluation/Cancer_Evaluation_Data/colorect_cancer_evaluation.csv")
 
@@ -517,8 +518,10 @@ sbs44 <- eval_df2 %>%
 cor(sbs44$expected_list, sbs44$actual_list)
 ```
 
+The correlation between **Dissolvo** and true proportion for Colorectal cancer is around 95%. The correlation between **Dissolvo** and true proportion for Colorectal cancer is the most accurate as about 97.8% in SBS1. SBS5 is 93.6%, SBS40  is 83.1%, SBS44 is 94.9%. Dissolvo is less effective in SBS40 compared to the other mutational signatures.
 
-Plot the Expected vs. fit_to_sig 
+
+This plot is comparing the result from **Dissolvo**(Expected) and the **fit_to_signature** function from MutationalPatterns library.
 ```{r}
 ggplot(data = eval_df, aes(x = expected_list, y = fitsig_list))+
    geom_point(alpha=0.3) +
@@ -534,7 +537,9 @@ ggplot(data = eval_df, aes(x = expected_list, y = fitsig_list))+
 cor(eval_df$expected_list, eval_df$fitsig_list)
 ```
 
-Plot all together
+As the result above, **Dissolvo** and **fit_to_signature** have almost the same result, so **Dissolvo** has no big advantage over **fit_to_signature**.
+
+This plot is for all three options together.
 ```{r}
 eval_df_plot <- eval_df %>%
   pivot_longer(
@@ -562,7 +567,7 @@ mosaic::fav_stats(eval_df$expected_list-eval_df$actual_list)
 ```
 
 
-Getting MSE between Expected vs. fit_to_signature vs. Actual
+Getting MSE between **Dissolvo**(Expected) vs. **fit_to_signature** vs. True proportion(Actual)
 ```{r, eval=FALSE}
 mse_list_EF <- c()
 mse_list_EA <- c()
@@ -622,7 +627,7 @@ mse_df <- mse_df %>%
 #write.csv(mse_df, "Data/colorect_mse_ds.csv", row.names = FALSE)
 ```
 
-Plot of MSE between Expected vs. fit_to_signature vs. Actual
+Plot of MSE between **Dissolvo**(Expected) vs. **fit_to_signature** vs. True proportion(Actual)
 ```{r}
 mse_df <- read_csv("Data/colorect_mse_ds.csv")
 ```
