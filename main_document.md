@@ -370,11 +370,11 @@ sample mutational profile.
     dissolvo(sample_profile, sigs = c("SBS10a"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
     ## 
-    ## Iter: 1 fn: 0.0000002397  Pars:  1.00758
+    ## Iter: 1 fn: 0.0000001769  Pars:  0.99474
     ## solnp--> Completed in 1 iterations
 
-    ##   SBS10a 
-    ## 1.007578
+    ##    SBS10a 
+    ## 0.9947394
 
     #2 sigs
     sample_profile <- generate_sample_prof(c("SBS10a","SBS6"),c(3000,7000))
@@ -385,11 +385,11 @@ sample mutational profile.
     dissolvo(sample_profile, sigs = c("SBS10a","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
     ## 
-    ## Iter: 1 fn: 1000.0000     Pars:  0.30228 0.70695
+    ## Iter: 1 fn: 1000.0000     Pars:  0.30192 0.70326
     ## solnp--> Completed in 1 iterations
 
     ##    SBS10a      SBS6 
-    ## 0.3022812 0.7069524
+    ## 0.3019197 0.7032611
 
     #3 sigs
     sample_profile <- generate_sample_prof(c("SBS1","SBS10b","SBS6"),c(200,300,500))
@@ -400,11 +400,11 @@ sample mutational profile.
     dissolvo(sample_profile, sigs = c("SBS1","SBS10b","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("40%", "50%"), mb_size = 50)
 
     ## 
-    ## Iter: 1 fn: 1000.0000     Pars:  0.24454 0.31100 0.42613
+    ## Iter: 1 fn: 1000.0000     Pars:  0.20102 0.28355 0.49638
     ## solnp--> Completed in 1 iterations
 
     ##      SBS1    SBS10b      SBS6 
-    ## 0.2445416 0.3109980 0.4261271
+    ## 0.2010162 0.2835543 0.4963796
 
     #4 sigs
     sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6"),c(300,100,200,400))
@@ -415,11 +415,11 @@ sample mutational profile.
     dissolvo(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
     ## 
-    ## Iter: 1 fn: 1000.0000     Pars:  0.29111 0.10853 0.20239 0.37492
+    ## Iter: 1 fn: 1000.0000     Pars:  0.28909 0.08402 0.17692 0.41176
     ## solnp--> Completed in 1 iterations
 
-    ##    SBS10a    SBS10b      SBS1      SBS6 
-    ## 0.2911117 0.1085275 0.2023894 0.3749201
+    ##     SBS10a     SBS10b       SBS1       SBS6 
+    ## 0.28908602 0.08401502 0.17692219 0.41176308
 
     #5 sigs
     sample_profile <- generate_sample_prof(c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"),c(200,300,100,300,100))
@@ -430,11 +430,11 @@ sample mutational profile.
     dissolvo(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tissue_type = "COAD", scale = "exome", quantiles = c("5%", "95%"), mb_size = 50)
 
     ## 
-    ## Iter: 1 fn: 1000.0000     Pars:  0.24212 0.27787 0.10203 0.30506 0.09223
+    ## Iter: 1 fn: 1000.0000     Pars:  0.21119 0.32877 0.12554 0.25788 0.10191
     ## solnp--> Completed in 1 iterations
 
-    ##     SBS10a     SBS10b       SBS1       SBS6       SBS2 
-    ## 0.24211695 0.27786592 0.10202669 0.30506303 0.09222827
+    ##    SBS10a    SBS10b      SBS1      SBS6      SBS2 
+    ## 0.2111927 0.3287712 0.1255408 0.2578841 0.1019070
 
 ## Evaluation of **Dissolvo** for ColoRect Cancer
 
