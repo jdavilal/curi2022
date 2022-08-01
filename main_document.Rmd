@@ -343,7 +343,6 @@ dissolvo <- function(sample_profile, sigs, tissue_type, scale, quantiles, mb_siz
 ```
 
 
-
 Method testing code
 ```{r}
 #1 sig
@@ -373,7 +372,7 @@ dissolvo(sample_profile, sigs = c("SBS10a","SBS10b","SBS1","SBS6", "SBS2"), tiss
 ```
 
 
-## Evaluation of Dissolvo
+## Evaluation of Dissolvo for ColoRect Cancer
 ```{r}
 COSMICsample_ds <- read_csv("Data/COSMICsample_ds.csv")
 cosmic.signatures <- get_known_signatures()
@@ -468,13 +467,13 @@ eval_df <- eval_df %>%
   )
 ``` 
 ```{r, eval=FALSE}
-write.csv(eval_df, "Data/Ovarian_ds.csv", row.names = FALSE)
+#write.csv(eval_df, "Data/colorect_cancer_evaluation.csv", row.names = FALSE)
 ```
 
 
 ## Result Figures - Plot the Expected vs. Actual
 ```{r}
-eval_df <- read_csv("Data/evaluation_ds.csv")
+eval_df <- read_csv("Cancer_Evaluation/Cancer_Evaluation_Data/colorect_cancer_evaluation.csv")
 
 #Result Figure1
 ggplot(data = eval_df, aes(x = expected_list, y = actual_list))+
@@ -620,12 +619,12 @@ mse_df <- mse_df %>%
   )
 ```
 ```{r, eval=FALSE}
-write.csv(mse_df, "Data/mse_ds.csv", row.names = FALSE)
+#write.csv(mse_df, "Data/colorect_mse_ds.csv", row.names = FALSE)
 ```
 
 Plot of MSE between Expected vs. fit_to_signature vs. Actual
 ```{r}
-mse_df <- read_csv("Data/mse_ds.csv")
+mse_df <- read_csv("Data/colorect_mse_ds.csv")
 ```
 ```{r}
 mean(mse_df$mse_list_EA)

@@ -1,0 +1,631 @@
+---
+title: "Mutational Signatures in RNA-seq from Ovarian Cancer"
+output: 
+  html_document:
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+
+library(tidyverse)
+library(MutationalPatterns)
+library(NMF)
+library(reshape2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(ggrepel)
+
+```
+
+## Preliminary functions
+
+The following functions allow us to load and analyze mutational signatures
+
+```{r}
+# Loads a mutational signature matrix from a mutational signature txt file
+load_old_mutational_matrix<- 
+  function(filename,
+          mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+  mutational.signature <-  read_csv(filename)
+  mut_mat <-  read_csv(mut.order)
+
+  mut.join <-  mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri <-  unique(mut.join$ext.context)
+
+  mut.join <-  mut.join %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    select(ext.context,prob)
+  
+  mut.matrix <-  as.matrix(
+        sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+
+  rownames(mut.matrix) <-  mut.join$ext.context
+ 
+  return (t(mut.matrix)[,1:96])
+}
+
+change_old_mutational_matrix<-
+    function(sig.frame,
+             mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+        
+  mutational.signature <-  sig.frame
+  mut_mat <-  read_csv(mut.order)
+
+  mut.join <-  mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri <-  unique(mut.join$ext.context)
+
+  mut.join <-  mut.join %>%
+      mutate(ext.context =
+                 factor (ext.context, levels = order.tri)) %>%
+      select(sample,ext.context,prob) %>%
+      pivot_wider(names_from = ext.context,
+                  values_from = prob)
+    
+    mut.matrix <-  as.matrix(
+        sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+    rownames(mut.matrix) = mut.join$sample
+
+    return (t(mut.matrix))
+}
+
+load_cosmic_matrix<- function(mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv") {
+
+  sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
+                "signatures_probabilities.txt", sep = "")
+   
+  cancer_signatures <-  read.table(sp_url, sep = "\t", header = TRUE)
+  # Match the order of the mutation types to MutationalPatterns standard
+  mut_mat <-  read_csv(mut.order)
+  new_order <-  match(mut_mat$ext.context, cancer_signatures$Somatic.Mutation.Type) 
+  # Reorder cancer signatures dataframe
+  cancer_signatures <-  cancer_signatures[as.vector(new_order),]
+  # Add trinucletiode changes names as row.names
+  row.names(cancer_signatures) <-  cancer_signatures$Somatic.Mutation.Type
+  # Keep only 96 contributions of the signatures in matrix
+  cancer_signatures <- as.matrix(cancer_signatures[,4:33])
+  return(cancer_signatures)
+}
+
+# Returns a frame with columns Signature, Sample, Contribution with the absolute
+# contribution of each signature for each sample
+calc_abs_contribution <- function(nmf.res,sig.names) {
+
+  total_signatures <-  colSums(nmf.res$signatures) 
+  abs_contribution <-  nmf.res$contribution * total_signatures
+  rownames(abs_contribution) <- sig.names
+
+  m_contribution <-  melt(abs_contribution)
+  colnames(m_contribution) = c("signature", "sample", "contribution")
+
+  return (m_contribution)
+}
+
+# Returns a frames with the cosine similarity (fit) between the original profile and the
+# reconstructed profile
+calc_fit_contribution <- function(mut.matrix,nmf.res) {
+
+  # calculate all pairwise cosine similarities
+  cos_sim_ori_rec <- cos_sim_matrix(mut.matrix, nmf.res$reconstructed)
+  # extract cosine similarities per sample between original and reconstructed
+  fit.table<- as.data.frame(diag(cos_sim_ori_rec))
+  fit.table$Sample <-  rownames(fit.table)
+  colnames(fit.table) = c("fit","sample")
+
+  return(fit.table)
+}
+
+get_top_signature <-function(mut.table, signatures.table,
+                             signature,top.n=8,
+                             signatures=
+                                 c("PolE","Aging","MMR","Germline")){
+
+    # Construct table with only contribution from specific signature
+    sig.table <-  mut.table %>%
+        gather(signatures,key="sign.name",value="contribution") %>%
+        filter(sign.name==signature) %>%
+        arrange(desc(contribution))
+
+    # Pick top n samples for that signature
+    top.table <- 
+        sig.table %>% arrange(desc(contribution)) %>%
+        head(top.n)
+
+    # Pick signatures for those top samples and plot them
+    mut.selected <- top.table %>%
+        select(sample) %>%
+        inner_join (signatures.table)
+
+    top.signatures <-  change_old_mutational_matrix(mut.selected)
+    colnames(top.signatures) <-  paste0("P",1:top.n,"")
+
+    plot.top <-  plot_96_profile(top.signatures)
+
+    return (plot.top)
+}
+
+```
+
+## Data acquisition and cleaning
+
+We load the mutational signatures file for all of the samples and consider only 
+samples that have high sequencing coverage (over 5Mb at 20x)
+
+```{r}
+# Load mutational signature data for all samples
+signatures <- read_csv(
+    "mutational_sig_oec-main/supplied_data/mutational.sig.csv")
+
+# Load sequencing/cohort info for samples, filter with at
+# at least 5 million Mb covered
+sample.info <-
+    read_csv("mutational_sig_oec-main/supplied_data/sample.info.csv") %>%
+    filter (area.cov > 5e6)
+
+
+```
+
+The following table summarizes the number of samples we will be using for the
+mutational signature analysis
+
+```{r} 
+knitr::kable(
+  sample.info %>%
+    group_by(study) %>%
+    summarize(n=n()))
+
+```
+
+## Mutational signature analysis
+
+### Initial NMF
+
+We ran the NMF signatures analysis with 4 clusters and plot the resulting  mutational signatures
+```{r}
+## code1
+mut.selected <- sample.info %>%
+  filter(sample == "s1133903279") %>%
+  select (sample) %>%
+  inner_join (signatures)
+
+mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
+mutational.signature <-  mut.selected
+mut_mat <-  read_csv(mut.order)
+
+mut.join <-  mutational.signature %>%
+  inner_join(mut_mat)
+
+order.tri <-  unique(mut.join$ext.context)
+
+mut.join <-  mut.join %>%
+    mutate(ext.context =
+               factor (ext.context, levels = order.tri)) %>%
+    select(sample,ext.context,prob) %>%
+    pivot_wider(names_from = ext.context,
+                values_from = prob)
+  
+mut.matrix <-  as.matrix(
+    sapply(mut.join[,2:ncol(mut.join)], as.numeric))
+
+colnames(mut.matrix) = mut.join$sample
+mut_mat <- mut.matrix + 1e-04
+```
+
+```{r}
+## code1-1
+mut.selected <- sample.info %>%
+  select (sample) %>%
+  inner_join (signatures)
+
+mut.order="mutational_sig_oec-main/supplied_data/mut_sig.order.csv"
+mutational.signature <-  mut.selected
+mut_mat <-  read_csv(mut.order)
+
+mut.join <-  mutational.signature %>%
+  inner_join(mut_mat)
+
+order.tri <-  unique(mut.join$ext.context)
+
+mut.join <-  mut.join %>%
+    mutate(ext.context =
+               factor (ext.context, levels = order.tri)) %>%
+    select(sample,ext.context,prob) %>%
+    pivot_wider(names_from = ext.context,
+                values_from = prob)
+  
+mut.matrix <-  as.matrix(
+    sapply(mut.join[,2:ncol(mut.join)], as.numeric))
+
+rownames(mut.matrix) = mut.join$sample
+mut_mat <- t(mut.matrix) + 1e-04
+```
+
+```{r}
+mut.selected <- sample.info %>%
+  select (sample) %>%
+  inner_join (signatures)
+
+mut_mat <- change_old_mutational_matrix(mut.selected)+ 1e-04
+
+# Do NMF factorization 
+nclusters <-  4
+nmf.res <- extract_signatures(mut_mat, rank = nclusters, nrun = 10)
+mut.sig <-  nmf.res$signatures
+colnames(mut.sig) <-  seq(1, nclusters)
+
+# Signature plots
+plot_96_profile(mut.sig)
+```
+
+We adjust the order of the mutational signatures so that they are shown as POLE,MMR,Aging and germline
+
+```{r}
+mut.sig <-  mut.sig[,c("3","2","4","1")]
+colnames(mut.sig) <-  c(1,2,3,4)
+
+sample.signatures.figure <- plot_96_profile(mut.sig)+
+  theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_text(size=3),
+        axis.title = element_text(size=12),
+        strip.text.y = element_text(size=15, angle=0),
+        strip.text.x = element_text(size=15, angle=0),
+        axis.title.x = element_text(size=15),
+        axis.title.y = element_text(size=15),
+        aspect.ratio=1)+
+  labs(x="Dinucleotide Context")
+
+sample.signatures.figure
+```
+
+We compare the mutational signatures against COSMIC mutational signatures v2 and
+the germline signature
+
+```{r}
+cosmic.signatures <- load_cosmic_matrix()
+germline.sig <- load_old_mutational_matrix("mutational_sig_oec-main/supplied_data/germline.sig.csv")
+reference.sig <-  cbind (cosmic.signatures[,c(10,6,5)], germline.sig)
+sig.labels <-  c("PolE","MMR","Aging","Germ.")
+colnames(reference.sig) <- sig.labels
+
+sim.table <-  tibble (signature.id=c(1,2,3,4),
+                      signature.ref = sig.labels,
+                      cosine.sim=round(
+                        diag(cos_sim_matrix(reference.sig,mut.sig)),2))
+knitr::kable(sim.table)
+```
+
+```{r}
+cosmic.signatures[,c(10,6,5)]
+```
+
+And we show the relevant COSMIC v2 signatures plus the germline signature profiles
+
+```{r}
+reference.signatures.figure <- 
+    plot_96_profile(reference.sig) +
+    theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_text(size=3),
+        axis.title = element_text(size=12),
+        strip.text.y = element_text(size=12, angle=-90),
+        strip.text.x = element_text(size=15, angle=0),
+        axis.title.x = element_text(size=15),
+        axis.title.y = element_text(size=15),
+        aspect.ratio=1)+
+        labs(x="Dinucleotide Context")
+
+reference.signatures.figure
+
+png ("mutational_sig_oec-main/figures/figure.1.png", 
+     width=5, height=7, units='in',
+     res=300, pointsize=20)
+
+ggarrange(
+    sample.signatures.figure,
+    reference.signatures.figure,
+    labels = c("A","B"),
+    ncol=1)
+
+dev.off()
+
+```
+
+And we label appropriately the signatures from the NMF analysis 
+
+```{r}
+sig.names <- c("Germline","MMR","PolE","Aging")
+colnames(nmf.res$signatures)=sig.names
+plot_96_profile(nmf.res$signatures)
+mut.sig <-  nmf.res$signatures
+```
+
+### Contributions per signature
+
+We calculate the predicted mutations per Mb per each signature across each sample and visualize their distributions across cohorts
+
+```{r}
+study.order <- c("Mayo","GTEx","TCGA")
+signature.order <-c("PolE","MMR","Aging","Germline")
+
+sig.abs.contribution <- calc_abs_contribution (nmf.res,sig.names) %>%
+    inner_join(sample.info) %>%
+    mutate(pred.snvs=round(contribution*tmb,digits=2),
+           study=ifelse(study=="Gtex","GTEx",study),
+           study=factor(study,levels=study.order),
+           signature=factor(signature, levels=signature.order))
+
+ggplot(sig.abs.contribution,
+       aes(x=signature,y=pred.snvs)) +
+    geom_violin(draw_quantiles=c(0.25,0.5,0.75) )+
+    facet_grid(.~study)+
+    scale_y_log10(limits=c(0.1,100),
+                  breaks=c(0.1,1,10,100),
+                  labels=c("0.1","1","10","100"))+
+    theme(axis.text.x = element_text(size=12, angle=90), 
+          axis.text.y = element_text(size=12),
+          axis.title = element_text(size=12),
+          strip.text.x = element_text(size=12))+
+    labs(x="Signature",y="Mutations per megabase")
+
+ggsave("mutational_sig_oec-main/figures/supp.figure.1.png", units="in", dpi=300, 
+       scale=1, width=5, height=3 )
+```
+
+And calculate their medians and IQR below
+
+```{r}
+# Median across signatures and studies
+knitr::kable(sig.abs.contribution %>%
+    group_by(study,signature) %>%
+    summarize (median.TMB = median(pred.snvs)) %>%
+    pivot_wider(names_from=signature, values_from=median.TMB))
+
+
+# IQR across signatures and studies
+knitr::kable(sig.abs.contribution %>%
+    group_by(study,signature) %>%
+    summarize (iqr.TMB = quantile (pred.snvs, c(.75))-
+                   quantile(pred.snvs,c(.25))) %>%
+    pivot_wider(names_from=signature, values_from=iqr.TMB))
+
+```
+
+
+We assess the cosine similarity between the NMF reconstructed signatures and the original signatures
+
+```{r}
+sig.fit.contribution <- calc_fit_contribution (mut_mat, nmf.res)
+knitr::kable(quantile(sig.fit.contribution$fit))
+
+ggplot(sig.fit.contribution, aes(x=fit))+
+    geom_histogram(color="black", fill="lightblue")+
+    labs(x="Cosine similarity between original\n and reconstructed mutational signatures")+
+    theme(axis.title = element_text(size=10))
+
+ggsave("mutational_sig_oec-main/figures/supp.figure.2.png", units="in", dpi=300, 
+       scale=1, width=3, height=3 )
+```
+
+### Calculating somatic TMB
+
+We can calculate the somatic TMB across samples by subtracting the contribution of the germline signature. Below we plot the distribution of TMB across studies
+
+```{r}
+mut.table <-  sig.abs.contribution %>%
+    select (sample,signature,pred.snvs,study) %>%
+    spread (signature,pred.snvs)%>%
+    inner_join(sig.fit.contribution) %>%
+    inner_join(sample.info, by = c("sample")) %>%
+    mutate (tmb.norm=(MMR+PolE+Aging),
+            adj.num = MMR + PolE + Aging + Germline,
+            mmr.pct = MMR/adj.num,
+            pole.pct = PolE/adj.num,
+            study = study.x) %>%
+    select (-c("study.y","study.x"))     
+
+mut.table = as_tibble(mut.table)
+
+breaks.signatures = c(0.1,0.5,1,5,10,50,100)
+labels.signatures = c("0.1","0.5","1","5","10","50","100")
+
+
+# Supplementary figure with TMB distribution across studies
+ggplot(mut.table, aes(x=study,y=tmb.norm))+
+    geom_violin(draw_quantiles=c(0.25,0.5,0.75))+
+    scale_y_log10(limits=c(1,100),
+                  breaks=breaks.signatures,
+                  labels=labels.signatures)+
+    labs(x="Study",y="Somatic mutational burden\n(mutations per megabase)")+
+    theme(axis.text.x = element_text(size=12), 
+          axis.text.y = element_text(size=12),
+          axis.title = element_text(size=12),
+          strip.text.x = element_text(size=12))
+
+ggsave("mutational_sig_oec-main/figures/supp.figure.4.png", units="in", dpi=300, 
+       scale=1, width=5, height=3 )
+
+
+# Summary statistics of TMB across studies
+knitr::kable(
+  mut.table %>%
+    group_by(study) %>%
+    summarize (median.TMB = median(tmb.norm),
+               iqr.TMB = quantile (tmb.norm, c(.75))-
+                   quantile(tmb.norm,c(.25))))
+
+```
+
+
+
+### Identifying samples with high POLE signature contribution
+
+We transform the table so that each mutational signature gets a different column
+
+
+```{r}
+mut.table <-  sig.abs.contribution %>%
+    select (sample,signature,pred.snvs,study) %>%
+    spread (signature,pred.snvs)%>%
+    inner_join(sig.fit.contribution) %>%
+    inner_join(sample.info, by = c("sample")) %>%
+    mutate (tmb.norm=(MMR+PolE+Aging),
+            adj.num = MMR + PolE + Aging + Germline,
+            mmr.pct = MMR/adj.num,
+            pole.pct = PolE/adj.num,
+            study = study.x) %>%
+    select (-c("study.y","study.x"))     
+
+mut.table = as_tibble(mut.table)
+```
+
+We plot the distribution of the POLE signatures across cohorts and label samples from the Mayo cohort with over 5 mutations per Mb
+```{r}
+## main code
+sig <- cosmic.signatures[,c(10,6,1)]
+sig.labels <-  c("sig10","sig6","sig1")
+colnames(sig) <- sig.labels
+
+p3 <- mut_mat[, "s1133903279"] 
+
+data <- cbind(p3, sig)
+data <- as_tibble(data)
+
+write_csv(data, "mutational_sig_oec-main/supplied_data/P3_sig.csv")
+
+model1 <- lm(p3 ~ 0 + sig10 + sig6, data = data)
+summary(model1)
+
+model2 <- lm(p3 ~ 0 + sig10 + sig1, data = data)
+summary(model2)
+
+#plot1
+ggplot(data, aes(sig10, p3)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+data1 <- data %>%
+  pivot_longer(
+    cols = c(`sig10`, `sig6`, `sig1`),
+    names_to = "signatures", 
+    values_to = "prob"
+  )
+
+#plot2
+ggplot(data1, aes(x = prob, y = p3, color = signatures)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+```{r}
+pole.labels = mut.table %>%
+    filter (PolE>5)%>%
+    arrange(desc(PolE)) %>%
+    mutate(id = paste0("P",row_number())) %>%
+    select(sample,id,PolE,study) 
+adj.x = c(90,72,55,32,20,6.5)
+adj.y = c(6,15,6,6,6,6)
+
+pole.labels = pole.labels %>%
+  add_column(x=adj.x, y=adj.y)
+
+breaks.signatures = c(0.1,0.5,1,5,10,50,100)
+labels.signatures = c("0.1","0.5","1","5","10","50","100")
+
+pole.hist =
+    ggplot(mut.table, aes(x=PolE))+
+    geom_histogram(color="black",
+                   fill="lightblue",
+                   binwidth=0.03)+
+    geom_vline(xintercept=5, linetype="dashed", color="red")+
+    facet_grid(study~.)+
+    scale_x_log10(limits=c(0.1,100),
+                  breaks=breaks.signatures,
+                  labels=labels.signatures)+
+    labs(x=expression('Mutations per Mb from'~italic(POLE)~'signature'),
+         y="Frequency")+
+    geom_label(data=pole.labels,aes(label=id,x=x, y=y),
+               size=4, label.padding=unit(0.1, "lines"))+
+    theme(axis.text.x = element_text(size=15),
+          axis.text.y = element_text(size=15),
+          axis.title = element_text(size=15),
+          strip.text.y = element_text(size=15))
+pole.hist
+```
+
+And we plot the mutational profiles of these six outlier POLE samples
+
+```{r}
+pole.high=
+    get_top_signature(mut.table, signatures, "PolE",top.n=6)+
+    theme(axis.text.y = element_text(size=10),
+          axis.text.x = element_text(size=3),
+          axis.title = element_text(size=12),
+          strip.text.y = element_text(size=15, angle=0),
+          strip.text.x = element_text(size=15),
+          axis.title.x = element_text(size=15),
+          axis.title.y = element_text(size=15))+
+    labs(x="Dinucleotide Context")
+
+pole.high
+
+png ("mutational_sig_oec-main/figures/figure.2.png", 
+     width=5, height=7, units='in',
+     res=300, pointsize=20)
+
+ggarrange(
+    pole.hist,
+    pole.high,
+    labels = c("A","B"),
+    nrow=2, heights=c(0.8, 1.1))
+
+dev.off()
+```
+
+Notice that sample P3 has high MMR component as well. By checking on IGV it was later found that it had mutation R167C in MLH1, so it is likely a Lynch Syndrome case as well.
+
+```{r}
+knitr::kable(
+ mut.table %>%
+    filter (PolE>5)%>%
+    arrange(desc(PolE)) %>%
+    mutate(id = paste0("P",row_number())) %>%
+    filter(MMR>5)%>%
+    select(id,PolE,MMR,tmb.norm,study))
+```
+
+### POLE hotspot mutations
+
+We can do a lollipop plot with the hotspot mutations from POLE across COSMIC
+
+```{r}
+pole.hotspot <- read_csv(
+    "mutational_sig_oec-main/supplied_data/cosmic.pole.hotspot.csv") %>%
+    filter(Count>=10) %>%
+    mutate(pct= paste0(round(Count/sum(Count)*100, 0), "%")) 
+
+pole.hotspot.fig <- 
+  ggplot(data=pole.hotspot,
+         aes(x=Position,y=Count))+
+      geom_segment(aes(x=Position,y=0,
+                     xend=Position,yend=Count))+
+      geom_point (size=2)+
+      geom_label_repel( aes(label=paste0(AA,":",pct,""),
+                      x=Position+15,
+                      y=Count+5))+
+      xlim(1,1550)
+
+pole.hotspot.fig
+
+png("mutational_sig_oec-main/figures/supp.figure.3.png", width=3, height=3,
+    units="in", res=300, pointsize=15)
+
+pole.hotspot.fig
+dev.off()
+```
+

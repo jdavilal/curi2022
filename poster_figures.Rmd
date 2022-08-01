@@ -102,7 +102,7 @@ ggarrange(p1, p2,
 ## Result Figures
 Result1 figure
 ```{r Result Figures}
-eval_df <- read_csv("Data/evaluation_ds.csv")
+eval_df <- read_csv("Cancer_Evaluation/Cancer_Evaluation_Data/colorect_cancer_evaluation.csv")
 
 #Result Figure1
 ggplot(data = eval_df, aes(x = expected_list, y = actual_list, label = sig_list))+
@@ -150,7 +150,7 @@ of Selected Mutational Signatures") +
 
 Result3 figure
 ```{r}
-acc <- read_csv("Data/all_cancer_correlation.csv")
+acc <- read_csv("Data/top10_cancer_correlation.csv")
 acc <- acc %>%
   mutate(all_cancer = fct_recode(all_cancer,
                                  "Lung" = "Lung_cancer",
