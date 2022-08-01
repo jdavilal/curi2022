@@ -28,7 +28,7 @@ library(ggrepel)
 ```
 
 ## Method Figures
-method1
+plot1
 ```{r Method Figures}
 #Load the P3, Sig10,6,5 data
 p3 <- read_csv("Data/P3_sig.csv")
@@ -47,85 +47,66 @@ p3_final <- p3_final %>%
   mutate(p3 = p3.x) %>%
   select(2:4, 7, 9)
 
-#method1
-ggplot(p3_final, aes(x = sig10, y = p3)) +
+#plot1
+p1 <- ggplot(p3_final, aes(x = sig10, y = p3)) +
   geom_point(alpha = 0.3) + 
-  geom_text(data = subset(p3_final, p3 > 0.12 & sig10 < 0.1), aes(label=ext.context), vjust = 2) +
+  geom_text(data = subset(p3_final, p3 > 0.12 & sig10 < 0.1), aes(label=ext.context), vjust = 2, hjust = -0.25) +
   geom_text(data = subset(p3_final, p3 > 0.14 & sig10 > 0.2), aes(label=ext.context), vjust = 2) +
-  geom_text(data = subset(p3_final, sig10 > 0.3), aes(label=ext.context), vjust = 2) +
+  geom_text(data = subset(p3_final, sig10 > 0.3), aes(label=ext.context), vjust = 2, hjust = 1) +
   geom_smooth(method = "lm", color = "mediumpurple3", level = 0.5) +
-  labs(title = "Sample Profile Against SBS10", 
-       x = "SBS10",
+  labs(x = "SBS10",
        y = "Sample Profile") +
   theme_bw() +
-  theme(plot.title = element_text(size = 15, hjust = 0.5, face = "bold")) +
+  theme(plot.title = element_text(size = 15, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size = 13)) +
   theme(panel.grid.minor.x = element_line(),
         panel.grid.major.x = element_blank(),
         panel.grid.minor.y = element_line(),
         panel.grid.major.y = element_blank())
-
+p1
 #ggsave("method1.png", device='png', dpi=700)
 ```
 
-method2
+plot2
 ```{r}
-#method2
-ggplot(p3_final, aes(x = sig6, y = p3)) +
+#plot2
+p2 <- ggplot(p3_final, aes(x = sig6, y = p3)) +
   geom_point(alpha = 0.3) +
   geom_text(data = subset(p3_final, p3 > 0.12 & sig6 < 0.1), aes(label=ext.context), vjust = 2) +
   geom_text(data = subset(p3_final, p3 > 0.12 & sig6 > 0.1), aes(label=ext.context), vjust = 2) +
   geom_smooth(method = "lm", color = "mediumpurple3", level = 0.5) +
-  labs(title = "Plot of Sample Profile Against SBS6", 
-       x = "SBS6",
+  labs(x = "SBS6",
        y = "Sample Profile") +
   xlim(0, 0.3) +
   theme_bw() +
-  theme(plot.title = element_text(size = 15, hjust = 0.5, face = "bold")) +
+  theme(plot.title = element_text(size = 15, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size = 13)) +
   theme(panel.grid.minor.x = element_line(),
         panel.grid.major.x = element_blank(),
         panel.grid.minor.y = element_line(),
         panel.grid.major.y = element_blank())
-
+p2
 #ggsave("method2.png", device='png', dpi=700)
 ```
 
-
-$$Sample Profile = \beta_1SBS6 + \beta_2SBS10 $$
-$$x \leq \beta_1 \leq y$$
-$$x \leq \beta_2 \leq y$$
-
-method 3 (optional)
+Method2 figure (plot1 + plot2)
 ```{r optional}
-data <- read_csv("Data/P3_sig.csv")
+ggarrange(p1, p2,
+                    labels = c("B", "C"),
+                    ncol = 2)
 
-data1 <- data %>%
-  pivot_longer(
-    cols = c(`sig10`, `sig6`, `sig1`),
-    names_to = "signatures", 
-    values_to = "prob"
-  )
-
-#plot2
-ggplot(data1, aes(x = prob, y = p3, color = signatures)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  labs(
-    y = "Mutation prob of P3",
-    x = "Mutation prob of Sig",
-    title = "Contribution of Signatures to the Profile P3"
-  ) +
-  theme(axis.text.x = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.text.y = element_text(color = "grey20", size = 17, angle = 0, hjust = 1, vjust = 0, face = "plain"), axis.title = element_text(size = 17), plot.title = element_text(size=22), legend.text=element_text(size=17), legend.title =element_text(size=17)) 
+#ggsave("method1v2.png", device='png', dpi=700)
 ```
 
+
 ## Result Figures
-result1
+Result1 figure
 ```{r Result Figures}
 eval_df <- read_csv("Data/evaluation_ds.csv")
 
 #Result Figure1
 ggplot(data = eval_df, aes(x = expected_list, y = actual_list, label = sig_list))+
   geom_point(alpha=0.3) +
-  geom_text(data = subset(eval_df, expected_list > 0.79 & actual_list < 0.6), aes(label=sig_list), hjust= -0.1, vjust= 1) +
   geom_smooth(method = "lm", color = "mediumpurple3") +
   labs(x = "Results from Dissolvo", 
         y = "True Proportions",
@@ -141,7 +122,7 @@ Sample Colorectal Cancer Profiles") +
 #ggsave("result1.png", device='png', dpi=700)
 ```
 
-result2
+Result2 figure
 ```{r}
 sig_levels <- c("SBS1", "SBS5", "SBS15", "SBS40", "SBS44")
 eval_df2 <- eval_df %>%
@@ -167,7 +148,7 @@ of Selected Mutational Signatures") +
 #ggsave("result2.png", device='png', dpi=700)
 ```
 
-result3
+Result3 figure
 ```{r}
 acc <- read_csv("Data/all_cancer_correlation.csv")
 acc <- acc %>%
