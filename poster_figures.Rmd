@@ -63,7 +63,7 @@ p1 <- ggplot(p3_final, aes(x = sig10, y = p3)) +
         panel.grid.major.x = element_blank(),
         panel.grid.minor.y = element_line(),
         panel.grid.major.y = element_blank())
-
+p1
 #ggsave("method1.png", device='png', dpi=700)
 ```
 
@@ -85,11 +85,11 @@ p2 <- ggplot(p3_final, aes(x = sig6, y = p3)) +
         panel.grid.major.x = element_blank(),
         panel.grid.minor.y = element_line(),
         panel.grid.major.y = element_blank())
-
+p2
 #ggsave("method2.png", device='png', dpi=700)
 ```
 
-method2final
+Method2 figure (plot1 + plot2)
 ```{r optional}
 ggarrange(p1, p2,
                     labels = c("B", "C"),
@@ -98,8 +98,9 @@ ggarrange(p1, p2,
 #ggsave("method1v2.png", device='png', dpi=700)
 ```
 
+
 ## Result Figures
-result1
+Result1 figure
 ```{r Result Figures}
 eval_df <- read_csv("Data/evaluation_ds.csv")
 
@@ -118,10 +119,10 @@ Sample Colorectal Cancer Profiles") +
         panel.grid.minor.y = element_line(),
         panel.grid.major.y = element_blank())
 
-ggsave("result1.png", device='png', dpi=700)
+#ggsave("result1.png", device='png', dpi=700)
 ```
 
-result2
+Result2 figure
 ```{r}
 sig_levels <- c("SBS1", "SBS5", "SBS15", "SBS40", "SBS44")
 eval_df2 <- eval_df %>%
@@ -147,7 +148,7 @@ of Selected Mutational Signatures") +
 #ggsave("result2.png", device='png', dpi=700)
 ```
 
-result3
+Result3 figure
 ```{r}
 acc <- read_csv("Data/all_cancer_correlation.csv")
 acc <- acc %>%
